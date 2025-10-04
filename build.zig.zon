@@ -1,0 +1,17 @@
+.{
+    .name = .zigConcurrency,
+    .version = "0.0.0",
+    .fingerprint = 0xcbdc685b79077fb3, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .ziro = .{
+            .url = "git+https://github.com/dacheng-zig/ziro#0903ba71a12f4c08f8715210a9afa680b3ca5c10",
+            .hash = "ziro-0.0.0-gJN_2OduAQB1td3G-pgt4lI2H6Sl7KaGoDEMyLjVZP8N",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
