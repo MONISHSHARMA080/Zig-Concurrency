@@ -44,18 +44,23 @@ extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;
 
 pub const stackAlignment = 16;
 
-pub const CoroutineState = enum { Waiting, Finished, Running, Completed, WaitingForChannel };
+pub const CoroutineState = enum { NotRunning, Waiting, Finished, Running, Completed, WaitingForChannel };
 
-pub const CoroutineBase = packed struct {
+pub const CoroutineBase = struct {
     stack_pointer: [*]u8,
+
+    coroutineState: CoroutineState = .NotRunning,
+    // coroFn: Func,
+
+    // const Self = @This();
+
     const Func = *const fn (
         from: *CoroutineBase,
         self: *CoroutineBase,
     ) callconv(.c) noreturn;
 
-    pub const coroutineState: CoroutineState = .Running;
-
-    pub fn init(func: Func, stack: []align(stackAlignment) u8) errors!CoroutineBase {
+    /// note the coroutines are cold, you need to run it
+    pub fn init(func: anytype, stack: []align(stackAlignment) u8) errors!CoroutineBase {
         if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
         if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
         const register_bytes = archInfo.num_registers * 8;
@@ -63,15 +68,16 @@ pub const CoroutineBase = packed struct {
         const register_space = stack[stack.len - register_bytes ..];
         const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[archInfo.jump_idx * 8]));
         jump_ptr.* = func;
-        return .{ .stack_pointer = register_space.ptr };
+        return .{
+            .stack_pointer = register_space.ptr,
+        };
     }
+
     pub inline fn resumeFrom(self: *CoroutineBase, from: *CoroutineBase) void {
         return ziro_stack_swap(from, self);
     }
     pub fn yield(self: *@This(), target: *CoroutineBase) void {
         ziro_stack_swap(self, target);
-        // When this returns, someone has resumed us
-        // Execution continues from here with all registers restored
     }
 };
 
@@ -93,6 +99,8 @@ pub const CoroutineBase = packed struct {
 //
 //  --- next is the scheduler --
 //
+// you know instead of making a seperate yield and resume we can, just keep it and in the scheduler we can
+// call other if it is not there then go to main
 //
 //
 
