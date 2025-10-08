@@ -15,10 +15,20 @@ pub fn main() !void {
     // Acoro.resumeFrom(&main_coro);
     // Acoro.resumeFrom(&main_coro);
     try calling();
+    std.debug.print("\nin the main\n", .{});
     var coro = try CoroutineBase.initWithFunc(&fubCal, .{ 42, 100 }, &stack);
     var main_coro2: CoroutineBase = undefined;
-    coro.resumeFrom(&main_coro2);
-    coro.resumeFrom(&main_coro2);
+    // coro.resumeFrom(&main_coro2);
+    std.debug.print("State after created: {}\n", .{coro.coroutineState}); // .Finished
+    for (0..10) |i| {
+        if (coro.coroutineState != .Finished) {
+            std.debug.print("the corotine is not finish  in main at {d}\n", .{i});
+            coro.resumeFrom(&main_coro2);
+        } else {
+            std.debug.print("the corotine is marked finish in main at {d}\n", .{i});
+            break;
+        }
+    }
     std.debug.print("State: {}\n", .{coro.coroutineState}); // .Finished
 }
 
@@ -35,10 +45,16 @@ fn calling() !void {
         std.debug.print("{d} -- ", .{i});
     }
     std.debug.print("here the work is done in the calling() \n", .{});
-    if (coro.coroutineState != .Finished) {
-        coro.resumeFrom(&main_coro2);
+    for (0..10) |i| {
+        if (coro.coroutineState != .Finished) {
+            std.debug.print("the corotine is not finish at {d}\n", .{i});
+            coro.resumeFrom(&main_coro2);
+        } else {
+            std.debug.print("the corotine is marked finish at {d}\n", .{i});
+            break;
+        }
     }
-    // if (coro.coroutineState != .Finished) @panic("why is this bitch not marking it over\n");
+    // the fn coroutineWrapper is not running I think(or at the compile time)
     std.debug.print("State in calling()'s end: {}\n\n", .{coro.coroutineState}); // .Finished
 }
 
