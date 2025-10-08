@@ -49,49 +49,26 @@ pub const CoroutineState = enum { NotRunning, Waiting, Finished, Running, Comple
 
 pub const CoroutineBase = struct {
     stack_pointer: [*]u8,
-
     coroutineState: CoroutineState = .NotRunning,
     targetCoroutineToYieldTo: ?*CoroutineBase = null,
 
-    user_func_ptr: ?*const anyopaque = null,
-    user_args_ptr: ?*anyopaque = null,
-    // caller_fn: ?*const fn (*const anyopaque, ?*anyopaque) void = null,
-    caller_fn: ?*const fn (*anyopaque) void = null,
+    caller_fn: ?*const fn (*anyopaque, *CoroutineBase) void = null, // Added *CoroutineBase param
     args_storage: [256]u8 align(8) = undefined,
-
-    // var nameOfTheFnToExecute: *const [:0]u8 = "";
 
     const Func = *const fn (
         from: *CoroutineBase,
         self: *CoroutineBase,
     ) callconv(.c) noreturn;
 
-    /// note the coroutines are cold, you need to run it
-    pub fn init(func: anytype, stack: []align(stackAlignment) u8) errors!CoroutineBase {
-        if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
-        if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
-        const register_bytes = archInfo.num_registers * 8;
-        if (register_bytes > stack.len) return errors.StackTooSmall;
-        const register_space = stack[stack.len - register_bytes ..];
-        const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[archInfo.jump_idx * 8]));
-        jump_ptr.* = func;
-        return .{
-            .stack_pointer = register_space.ptr,
-            .targetCoroutineToYieldTo = null,
-        };
-    }
-
-    // This is the actual wrapper that gets put on the stack
     fn coroutineWrapper(from: *CoroutineBase, self: *CoroutineBase) callconv(.c) noreturn {
-        // Mark as running
         self.coroutineState = .Running;
+        self.targetCoroutineToYieldTo = from; // Set yield target automatically
+
         if (self.caller_fn) |caller| {
-            caller(&self.args_storage);
+            caller(&self.args_storage, self); // Pass self to caller
         }
 
         self.coroutineState = .Finished;
-        // Yield back to the caller (scheduler/parent coroutine)
-        // Never returns from here
         ziro_stack_swap(self, from);
         unreachable;
     }
@@ -100,36 +77,25 @@ pub const CoroutineBase = struct {
         if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
         if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
 
-        // c       nameOfTheFnToExecute = @typeName(user_func);
-
         const ArgsType = @TypeOf(args);
         if (@sizeOf(ArgsType) > 256) {
             @compileError("Args too large, increase args_storage size");
         }
-        //                          To Do
-        // =======================================================================
-        //   now get your comptime interface lib and check to see if
-        //   user_func's param's type match the one in the args/params
-        // =======================================================================
-        // 2) now how does the fn that was called gets to yield,
-        //    I think the initWithFunc is better but we need to check the arg type
-        //    and the we need to asure that it has the param of CoroutineBase to
-        //    yield and the fn where we should yield to should be in the coroutine
-        //    or in the fn too
-        // =======================================================================
 
         const register_bytes = archInfo.num_registers * 8;
         if (register_bytes > stack.len) return errors.StackTooSmall;
 
         const register_space = stack[stack.len - register_bytes ..];
 
-        // Put the WRAPPER function on the stack, not the user function
         const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[archInfo.jump_idx * 8]));
         jump_ptr.* = coroutineWrapper;
+
         const Caller = struct {
-            fn call(args_ptr: *anyopaque) void {
+            fn call(args_ptr: *anyopaque, coro: *CoroutineBase) void {
                 const typed_args = @as(*ArgsType, @ptrCast(@alignCast(args_ptr)));
-                _ = @call(.auto, user_func, typed_args.*);
+                // Prepend coro to the args tuple
+                const new_args = .{coro} ++ typed_args.*;
+                _ = @call(.auto, user_func, new_args);
             }
         };
 
@@ -137,7 +103,7 @@ pub const CoroutineBase = struct {
             .stack_pointer = register_space.ptr,
             .caller_fn = Caller.call,
         };
-        // Copy args into the struct's storage
+
         const args_bytes = std.mem.asBytes(&args);
         @memcpy(result.args_storage[0..args_bytes.len], args_bytes);
         return result;
@@ -146,12 +112,14 @@ pub const CoroutineBase = struct {
     pub inline fn resumeFrom(self: *CoroutineBase, from: *CoroutineBase) void {
         return ziro_stack_swap(from, self);
     }
-    pub fn yield(self: *@This(), targetCoroutineToYieldTo: *CoroutineBase) void {
-        // assert.assertWithMessage(self.targetCoroutineToYieldTo != null, "the fn/coroutine to yield is not there(null)");
-        ziro_stack_swap(self, targetCoroutineToYieldTo);
+
+    pub fn yield(self: *@This()) void {
+        if (self.targetCoroutineToYieldTo) |target| {
+            self.coroutineState = .Waiting;
+            ziro_stack_swap(self, target);
+        }
     }
 };
-
 //
 // this lib will provide(not this , I am talking about the lib as a whole), 2 fn go(Fn) and goRunCoro(Fn)- the go is like
 // the golang one while the goRunCoro will take in a fn and that fn should take in the argument Corotine type as I want to allow
