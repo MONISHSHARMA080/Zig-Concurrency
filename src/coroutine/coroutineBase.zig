@@ -43,37 +43,43 @@ comptime {
 
 extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;
 
-pub const stackAlignment = 16;
-
 pub const CoroutineState = enum { NotRunning, Waiting, Finished, Running, Completed, WaitingForChannel };
 
 pub const CoroutineBase = struct {
+    /// NOTE: keep this the first field as the assembly assumes that you do if you not then you will get unknown error
     stack_pointer: [*]u8,
+    stack: []u8,
     coroutineState: CoroutineState = .NotRunning,
     targetCoroutineToYieldTo: ?*CoroutineBase = null,
 
     caller_fn: ?*const fn (*anyopaque, *CoroutineBase) void = null, // Added *CoroutineBase param
     args_storage: [256]u8 align(8) = undefined,
 
+    allocator: std.mem.Allocator,
+
     const Func = *const fn (
         from: *CoroutineBase,
         self: *CoroutineBase,
     ) callconv(.c) noreturn;
 
+    const Self = @This();
+
     fn coroutineWrapper(from: *CoroutineBase, self: *CoroutineBase) callconv(.c) noreturn {
         self.coroutineState = .Running;
         self.targetCoroutineToYieldTo = from; // Set yield target automatically
-
         if (self.caller_fn) |caller| {
             caller(&self.args_storage, self); // Pass self to caller
         }
-
         self.coroutineState = .Finished;
         ziro_stack_swap(self, from);
         unreachable;
     }
 
-    pub fn initWithFunc(comptime user_func: anytype, args: anytype, stack: []align(stackAlignment) u8) errors!CoroutineBase {
+    pub fn initWithFunc(comptime user_func: anytype, args: anytype, allocator: std.mem.Allocator, config: struct {
+        stackAlignment: u8 = 16,
+        /// for eg enter 1024 * 8 for 8KB, default is 5
+        defaultStackSize: u16 = 1024 * 6,
+    }) !CoroutineBase {
         if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
         if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
 
@@ -81,11 +87,14 @@ pub const CoroutineBase = struct {
         if (@sizeOf(ArgsType) > 256) {
             @compileError("Args too large, increase args_storage size");
         }
+        var allocatedStack = try allocator.alloc(u8, config.defaultStackSize);
+
+        errdefer allocator.free(allocatedStack);
 
         const register_bytes = archInfo.num_registers * 8;
-        if (register_bytes > stack.len) return errors.StackTooSmall;
+        if (register_bytes > allocatedStack.len) return errors.StackTooSmall;
 
-        const register_space = stack[stack.len - register_bytes ..];
+        const register_space = allocatedStack[allocatedStack.len - register_bytes ..];
 
         const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[archInfo.jump_idx * 8]));
         jump_ptr.* = coroutineWrapper;
@@ -99,14 +108,23 @@ pub const CoroutineBase = struct {
             }
         };
 
+        // where the fuck should I store the allocated stack and what is it's use, look into the previous one(stack allocating coro's stack on github)
         var result = CoroutineBase{
             .stack_pointer = register_space.ptr,
             .caller_fn = Caller.call,
+            .stack = allocatedStack,
+            .allocator = allocator,
         };
 
         const args_bytes = std.mem.asBytes(&args);
         @memcpy(result.args_storage[0..args_bytes.len], args_bytes);
         return result;
+    }
+
+    pub fn destroy(self: *CoroutineBase) void {
+        assert.assertWithMessage(self.coroutineState != .Running, "attempted to destroy a coroutine while it is running\n");
+        self.allocator.free(self.stack);
+        self.coroutineState = .Completed;
     }
 
     pub inline fn resumeFrom(self: *CoroutineBase, from: *CoroutineBase) void {
@@ -130,12 +148,7 @@ pub const CoroutineBase = struct {
 // 2) we can take in the fn and then put it in another fn and when the fn(original) is over then we can in the end put the
 //  state to be done (enum)
 //
-//
-//  tuesday:7th Oct
-//  -- coroutine impl
-//  * implement coroBase : asm for both fn and also
-//  * the the yield mechanism , how to mark it's state to be ended when the
-//
+//  -- make sure the coroutine heap allocates
 //  --- next is the scheduler --
 //
 // you know instead of making a seperate yield and resume we can, just keep it and in the scheduler we can
