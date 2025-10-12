@@ -1,43 +1,44 @@
 const std = @import("std");
-const zigConcurrency = @import("zigConcurrency");
-const Coroutine = @import("./coroutine/coroutine.zig").Coroutine;
+const Coroutine = @import("../src/coroutine/coroutine.zig");
 
-pub fn main() !void {
-    // Prints to stderr, ignoring potential errors.
-    std.debug.print("the  stack size of a() is {d} kb\n", .{@intFromPtr(&aFn) / 1000});
-    std.debug.print("the  stack size of main() is {d} kn\n", .{@intFromPtr(&main) / 1000});
-    std.debug.print("the fn b finished\n", .{});
-    // var stack: [1024 * 5]u8 align(16) = undefined;
-    // var main_coro = CoroutineBase{ .stack_pointer = undefined };
-    // var Acoro = try CoroutineBase.init(a, &stack);
-    // Acoro.resumeFrom(&main_coro);
-    // Acoro.resumeFrom(&main_coro);
-    std.debug.print("\nin the main\n", .{});
-    try calling();
-    // const alloc = std.heap.GeneralPurposeAllocator(.{}).init;
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var coro = try Coroutine.initWithFunc(&fubCal, .{ 42, 100 }, allocator, .{});
-    var main_coro2: Coroutine = .{
-        .stack = &[_]u8{},
-        .stack_pointer = undefined,
-        .allocator = undefined,
-    };
-    defer main_coro2.destroy();
-    defer coro.destroy();
-    std.debug.print("State after created: {}\n", .{coro.coroutineState}); // .Finished
-    for (0..10) |i| {
-        if (coro.coroutineState != .Finished) {
-            std.debug.print("the corotine is not finish  in main at {d}\n", .{i});
-            coro.resumeFrom(&main_coro2);
-        } else {
-            std.debug.print("the corotine is marked finish in main at {d}\n", .{i});
-            break;
-        }
+/// Creates an array containing all numbers from `start` to `end` (inclusive) in random order
+/// Caller owns the returned array and must free it
+fn randomizedRange(
+    allocator: std.mem.Allocator,
+    start: i32,
+    end: i32,
+) ![]i32 {
+    if (start > end) {
+        return error.InvalidRange;
     }
-    std.debug.print("State: {}\n", .{coro.coroutineState}); // .Finished
-}
 
+    const count = @as(usize, @intCast(end - start + 1));
+
+    // Allocate array
+    var arr = try allocator.alloc(i32, count);
+
+    // Fill array with sequential values
+    for (0..count) |i| {
+        arr[i] = start + @as(i32, @intCast(i));
+    }
+
+    // Fisher-Yates shuffle
+    var prng = std.Random.DefaultPrng.init(blk: {
+        var seed: u64 = undefined;
+        try std.posix.getrandom(std.mem.asBytes(&seed));
+        break :blk seed;
+    });
+    const random = prng.random();
+
+    for (0..count - 1) |i| {
+        const j = i + random.uintLessThan(usize, count - i);
+        const temp = arr[i];
+        arr[i] = arr[j];
+        arr[j] = temp;
+    }
+
+    return arr;
+}
 fn calling() !void {
     // _ = self;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -110,7 +111,6 @@ fn fubCal(coro: *Coroutine, x: i32, y: i32) void {
         if (i > 17) return;
     }
 }
-
 pub fn aFn(self: *Coroutine) void {
     std.debug.print("hi from the fn aFn() and now we are suspending it \n", .{});
 
@@ -119,4 +119,13 @@ pub fn aFn(self: *Coroutine) void {
     self.yield();
     std.debug.print("this in a should not be shown\n", .{});
     // unreachable;
+}
+test "checking if the coroutine can pause and resume" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    const array = try randomizedRange(allocator, 0, 20);
+    for (array, 0..) |value, i| {
+        std.debug.print(" at {d} we got {d}  \n", .{ i, value });
+    }
 }
