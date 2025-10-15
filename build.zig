@@ -17,12 +17,16 @@ pub fn build(b: *std.Build) void {
         },
     };
 
+    const libxev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
+    // const a = b.dependency("aa", .{});
+
     // Module WITH assembly for external users
     const concurrency_module_with_asm = b.addModule("ZigConcurrency", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+
     concurrency_module_with_asm.addAssemblyFile(b.path(assembly_file));
 
     // Module WITHOUT assembly for internal test imports (to avoid duplicates)
@@ -31,6 +35,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    concurrency_module_with_asm.addImport("xev", libxev.module("xev"));
+    concurrency_module_no_asm.addImport("xev", libxev.module("xev"));
 
     // Test step
     const test_step = b.step("test", "Run all tests");
@@ -42,6 +49,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     lib_test_module.addAssemblyFile(b.path(assembly_file));
+
+    lib_test_module.addImport("xev", libxev.module("xev"));
 
     const lib_tests = b.addTest(.{
         .root_module = lib_test_module,
@@ -82,6 +91,8 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
+
+        test_module.addImport("xev", libxev.module("xev"));
 
         // Add assembly file to the test module itself
         test_module.addAssemblyFile(b.path(assembly_file));

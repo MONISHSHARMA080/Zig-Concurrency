@@ -8,6 +8,10 @@
             .url = "git+https://github.com/dacheng-zig/ziro#0903ba71a12f4c08f8715210a9afa680b3ca5c10",
             .hash = "ziro-0.0.0-gJN_2OduAQB1td3G-pgt4lI2H6Sl7KaGoDEMyLjVZP8N",
         },
+        .libxev = .{
+            .url = "https://github.com/mitchellh/libxev/archive/9b6634b6229be5f2c8fb22db1f6f652bac5c5040.tar.gz",
+            .hash = "122096de36db12f84297f331d7f5e0ba74e810eab62968ae207ead94309ea0133cab",
+        },
     },
     .paths = .{
         "build.zig",
