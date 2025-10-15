@@ -43,12 +43,12 @@ jobs:
           version: "0.15.1"  # or specify a version like "0.13.0"
       
       - name: Run tests
-        run: zig build test -Dtarget=${{ matrix.target }}
+        # run: zig build test -Dtarget=${{ matrix.target }}
       
-      - name: Run tests (native) on matching platform
-        if: |
-          (matrix.target == 'x86_64-linux' && matrix.os == 'ubuntu-latest') ||
-          (matrix.target == 'x86_64-macos' && matrix.os == 'macos-13') ||
-          (matrix.target == 'aarch64-macos' && matrix.os == 'macos-latest') ||
-          (matrix.target == 'x86_64-windows' && matrix.os == 'windows-latest')
+      # - name: Run tests (native) on matching platform
+      #   if: |
+      #     (matrix.target == 'x86_64-linux' && matrix.os == 'ubuntu-latest') ||
+      #     (matrix.target == 'x86_64-macos' && matrix.os == 'macos-13') ||
+      #     (matrix.target == 'aarch64-macos' && matrix.os == 'macos-latest') ||
+      #     (matrix.target == 'x86_64-windows' && matrix.os == 'windows-latest')
         run: zig build test
