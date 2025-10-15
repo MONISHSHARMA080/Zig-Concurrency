@@ -40,7 +40,7 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v1
         with:
-          version: master  # or specify a version like "0.13.0"
+          version: "0.15.1"  # or specify a version like "0.13.0"
       
       - name: Run tests
         run: zig build test -Dtarget=${{ matrix.target }}
