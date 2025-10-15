@@ -40,7 +40,7 @@ const archInfo: ArchInfo = switch (builtin.cpu.arch) {
 };
 
 comptime {
-    asm (archInfo.assembly);
+    // asm (archInfo.assembly);
 }
 
 extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;

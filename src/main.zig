@@ -7,11 +7,6 @@ pub fn main() !void {
     std.debug.print("the  stack size of a() is {d} kb\n", .{@intFromPtr(&aFn) / 1000});
     std.debug.print("the  stack size of main() is {d} kn\n", .{@intFromPtr(&main) / 1000});
     std.debug.print("the fn b finished\n", .{});
-    // var stack: [1024 * 5]u8 align(16) = undefined;
-    // var main_coro = CoroutineBase{ .stack_pointer = undefined };
-    // var Acoro = try CoroutineBase.init(a, &stack);
-    // Acoro.resumeFrom(&main_coro);
-    // Acoro.resumeFrom(&main_coro);
     std.debug.print("\nin the main\n", .{});
     try calling();
     // const alloc = std.heap.GeneralPurposeAllocator(.{}).init;
