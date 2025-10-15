@@ -51,4 +51,4 @@ jobs:
           (matrix.target == 'x86_64-macos' && matrix.os == 'macos-13') ||
           (matrix.target == 'aarch64-macos' && matrix.os == 'macos-latest') ||
           (matrix.target == 'x86_64-windows' && matrix.os == 'windows-latest')
-        run: zig build test]
+        run: zig build test
