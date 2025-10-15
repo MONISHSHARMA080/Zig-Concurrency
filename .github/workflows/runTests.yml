@@ -5,7 +5,8 @@ on:
     # branches: [ main ]
     branches: [ "*" ]
   pull_request:
-    branches: [ main ]
+    branches: [ main name: Multi-Architecture Tests
+
 
 jobs:
   test:
@@ -35,13 +36,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      
       - name: Setup Zig
-      - run: zig build test
-      - uses: mlugg/setup-zig@v2
-        # uses: goto-bus-stop/setup-zig@v2
+        uses: mlugg/setup-zig@v1
         with:
-          version: 0.15.1  # or specify a version like "0.13.0"
+          version: master  # or specify a version like "0.13.0"
       
       - name: Run tests
         run: zig build test -Dtarget=${{ matrix.target }}
@@ -52,4 +52,4 @@ jobs:
           (matrix.target == 'x86_64-macos' && matrix.os == 'macos-13') ||
           (matrix.target == 'aarch64-macos' && matrix.os == 'macos-latest') ||
           (matrix.target == 'x86_64-windows' && matrix.os == 'windows-latest')
-        run: zig build test
+        run: zig build test]
