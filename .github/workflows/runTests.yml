@@ -35,8 +35,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@v3
       - name: Setup Zig
       - run: zig build test
       - uses: mlugg/setup-zig@v2
