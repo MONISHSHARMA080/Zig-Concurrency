@@ -16,38 +16,17 @@ pub fn build(b: *std.Build) void {
             @panic("Unsupported cpu architecture");
         },
     };
-    //
-    // // This is the main library module that other packages will import
-    // const concurrency_module = b.addModule("ZigConcurrency", .{
-    //     .root_source_file = b.path("src/root.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    //
-    // // Test step
-    // const test_step = b.step("test", "Run all tests");
-    //
-    // // Tests for the main library file
-    // const lib_tests = b.addTest(.{
-    //     .root_module = concurrency_module,
-    // });
-    // lib_tests.root_module.addAssemblyFile(b.path(assembly_file));
-    // const run_lib_tests = b.addRunArtifact(lib_tests);
-    // test_step.dependOn(&run_lib_tests.step);
-    //
-    //
-    //new one
-    //
 
-    const concurrency_module = b.createModule(.{
+    // Module WITH assembly for external users
+    const concurrency_module_with_asm = b.addModule("ZigConcurrency", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-    concurrency_module.addAssemblyFile(b.path(assembly_file));
+    concurrency_module_with_asm.addAssemblyFile(b.path(assembly_file));
 
-    // Also register it as a named module for external use
-    _ = b.addModule("ZigConcurrency", .{
+    // Module WITHOUT assembly for internal test imports (to avoid duplicates)
+    const concurrency_module_no_asm = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -56,7 +35,7 @@ pub fn build(b: *std.Build) void {
     // Test step
     const test_step = b.step("test", "Run all tests");
 
-    // Tests for the main library file - reuse the same module
+    // Tests for the main library file
     const lib_test_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -96,9 +75,6 @@ pub fn build(b: *std.Build) void {
     }
 
     listFilesRecursive(testDir, "src/test", allocator, &test_files) catch unreachable;
-    // for (test_files.items, 0..) |value, i| {
-    //     // std.debug.print("in the arraylist at {d} ->{s}\n", .{ i, value });
-    // }
 
     for (test_files.items) |test_file| {
         const test_module = b.createModule(.{
@@ -107,11 +83,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         });
 
-        // DON'T add assembly here - it comes from the imported module
-        // Make the library module available to the test
-        test_module.addImport("ZigConcurrency", concurrency_module);
+        // Add assembly file to the test module itself
+        test_module.addAssemblyFile(b.path(assembly_file));
 
-        // Create test with the configured module
+        // Import the version WITHOUT assembly to avoid duplicates
+        test_module.addImport("ZigConcurrency", concurrency_module_no_asm);
+
         const t = b.addTest(.{
             .root_module = test_module,
         });
