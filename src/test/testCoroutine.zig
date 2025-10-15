@@ -153,11 +153,12 @@ fn putTheEvenNoInArray(self: *Coroutine, evenNoInArray: u64, atIndexInTheSortedA
     sortedArray[atIndexInTheSortedArray] = newElementToPut;
     // std.debug.print("after assignment sortedArray[{d}] we put the value {d} and it is {d}\n", .{ atIndexInTheSortedArray, newElementToPut, sortedArray[atIndexInTheSortedArray] });
     if (atIndexInTheSortedArray > 0) {
-        std.debug.print("at index - 1:{d}; sortedArray[atIndex - 1]:{d}  and newElementToPut -1 {d} should be equal\n ", .{ atIndexInTheSortedArray - 1, sortedArray[atIndexInTheSortedArray - 1], newElementToPut - 1 });
+        // std.debug.print("at index - 1:{d}; sortedArray[atIndex - 1]:{d}  and newElementToPut -1 {d} should be equal\n ", .{ atIndexInTheSortedArray - 1, sortedArray[atIndexInTheSortedArray - 1], newElementToPut - 1 });
         assert(sortedArray[atIndexInTheSortedArray - 1] == newElementToPut - 1); // at index:4 we have newElementToPut:4 and we want atIndex:3 the element 3
         assert(sortedArray[atIndexInTheSortedArray - 1] + 1 == sortedArray[atIndexInTheSortedArray]); // I know this is same as above but why not
     }
     if (atIndexInTheSortedArray == sortedArray.len - 1) self.coroutineState = .Finished;
+    std.debug.print("in the even coro and yielding\n", .{});
     self.yield();
 }
 
@@ -174,16 +175,17 @@ fn putTheOddNoInArray(self: *Coroutine, evenNoInArray: u64, atIndexInTheSortedAr
     // std.debug.print("the remainder of dividing {d} % 2 is {d} \n", .{ newElementToPut, @rem(newElementToPut, 2) });
     assert(@mod(newElementToPut, 2) != 0);
 
-    std.debug.print("at the sortedArray[{d}] we put the value {d} and it is {d}\n", .{ atIndexInTheSortedArray, newElementToPut, sortedArray[atIndexInTheSortedArray] });
+    // std.debug.print("at the sortedArray[{d}] we put the value {d} and it is {d}\n", .{ atIndexInTheSortedArray, newElementToPut, sortedArray[atIndexInTheSortedArray] });
     sortedArray[atIndexInTheSortedArray] = newElementToPut;
-    std.debug.print("after assignment sortedArray[{d}] we put the value {d} and it is {d}\n", .{ atIndexInTheSortedArray, newElementToPut, sortedArray[atIndexInTheSortedArray] });
+    // std.debug.print("after assignment sortedArray[{d}] we put the value {d} and it is {d}\n", .{ atIndexInTheSortedArray, newElementToPut, sortedArray[atIndexInTheSortedArray] });
     if (atIndexInTheSortedArray > 0) {
-        std.debug.print("at index - 1:{d}; sortedArray[atIndex - 1]:{d}  and newElementToPut -1 {d} should be equal\n ", .{ atIndexInTheSortedArray - 1, sortedArray[atIndexInTheSortedArray - 1], newElementToPut - 1 });
+        // std.debug.print("at index - 1:{d}; sortedArray[atIndex - 1]:{d}  and newElementToPut -1 {d} should be equal\n ", .{ atIndexInTheSortedArray - 1, sortedArray[atIndexInTheSortedArray - 1], newElementToPut - 1 });
         assert(sortedArray[atIndexInTheSortedArray - 1] == newElementToPut - 1); // at index:4 we have newElementToPut:4 and we want atIndex:3 the element 3
         assert(sortedArray[atIndexInTheSortedArray - 1] + 1 == sortedArray[atIndexInTheSortedArray]); // I know this is same as above but why not
     }
 
     if (atIndexInTheSortedArray == sortedArray.len - 1) self.coroutineState = .Finished;
+    std.debug.print("in the odd coro and yielding\n", .{});
     self.yield();
 }
 
@@ -261,15 +263,17 @@ test "checking if the coroutine can pause and resume" {
     defer allocator.free(sortedArray);
 
     // verifying that we got this shit right
-    for (@intCast(start)..@intCast(end)) |numberToCheck| {
+    for (@intCast(start)..@intCast(end), 0..) |numberToCheck, i| {
         var foundAt: ?i64 = null;
-        for (array, 0..) |valueAtIndex, index| {
+        for (sortedArray, 0..) |valueAtIndex, index| {
             if (numberToCheck == valueAtIndex) {
                 foundAt = @intCast(index);
                 break;
             }
         }
         std.debug.assert(foundAt != null);
+        std.debug.assert(sortedArray[i] == numberToCheck);
+        std.debug.print("we found the character {d} in the sorted array at index {d} and sortedArray[{d}] is {d} \n", .{ numberToCheck, foundAt.?, i, sortedArray[i] });
     }
     // now let's play the game of odd even , or smth where if we found the number bigger than the last one then we will add it to the array and yield and let the other
     // fn do it's job, we can make this into multiple fn
