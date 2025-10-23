@@ -133,6 +133,11 @@ pub const Coroutine = struct {
         return ziro_stack_swap(from, self);
     }
 
+    // starts executing the coroutine given and put that stack
+    pub inline fn startFrom(self: *Coroutine, from: *Coroutine) void {
+        return ziro_stack_swap(from, self);
+    }
+
     pub fn yield(self: *@This()) void {
         if (self.targetCoroutineToYieldTo) |target| {
             self.coroutineState = .Waiting;

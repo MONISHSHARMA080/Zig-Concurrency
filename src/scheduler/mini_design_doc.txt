@@ -1,0 +1,28 @@
+goal :
+         Make a work stealing scheduler in zig:
+
+ * it is multi core
+ * work stealing
+ * uses libxev for the io_calls
+
+ -- ok let's design the lib to see how I want the user to use it and work my way back:
+
+ I want the user to import the scheduler and then I want to make start fn say go()-> it can take a normal fn( **no** self: *Coroutine), can't yield, and one
+ that can yield fn(self: *Coroutine) and fn that can't yield but executes fn inside that can eg fn a(){ b(); c(self: *Coroutine); d()}
+ -- or we can take a fn and make it into a coroutine and
+
+look in the golang the compiler replaces the fn call to make them async (interceps it) we don't have control over it so
+ we have 2 approached:
+  1) thread local var
+  2) pass reference to it
+
+  choice->2: explicit handler, now since we are new we will go with explicit and also this is the zig's Philosophy
+  * now what we will do it take a fn and turn it into a coroutine first now we are going to take a global queue and put it in the queue, and start executing(thread management etc)
+  * now if there is no fn in the thread's local run queue ( and in the global and then in the other scheduler  ) then it uses the libxev to sleep (do not put the empty while loop) or run them all
+  how to run them all: this is a cooperative scheduler so the fn should take the ref to self or the scheduler or coroutine
+     what will the reference have: a reference to scheduler such that it can
+       1) yield(tell the scheduler)
+       2) make a channel and send and recv on that channel (block)
+       3) runtime: a sepreate code/fns that all have a ref to the scheduler and call yield etc to work, like file and network
+
+
