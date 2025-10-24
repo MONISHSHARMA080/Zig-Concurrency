@@ -18,7 +18,6 @@ pub fn build(b: *std.Build) void {
     };
 
     const libxev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
-    // const a = b.dependency("aa", .{});
 
     // Module WITH assembly for external users
     const concurrency_module_with_asm = b.addModule("ZigConcurrency", .{
@@ -26,8 +25,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-
     concurrency_module_with_asm.addAssemblyFile(b.path(assembly_file));
+    concurrency_module_with_asm.addImport("xev", libxev.module("xev"));
 
     // Module WITHOUT assembly for internal test imports (to avoid duplicates)
     const concurrency_module_no_asm = b.createModule(.{
@@ -35,9 +34,36 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-
-    concurrency_module_with_asm.addImport("xev", libxev.module("xev"));
     concurrency_module_no_asm.addImport("xev", libxev.module("xev"));
+
+    // Executable for main.zig
+    const exe_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    exe_module.addImport("zigConcurrency", concurrency_module_no_asm);
+    exe_module.addImport("xev", libxev.module("xev"));
+    exe_module.addAssemblyFile(b.path(assembly_file));
+
+    const exe = b.addExecutable(.{
+        .name = "zigConcurrency",
+        .root_module = exe_module,
+        // .target = target,
+        // .optimize = optimize,
+    });
+
+    b.installArtifact(exe);
+
+    // Run step
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
 
     // Test step
     const test_step = b.step("test", "Run all tests");
@@ -49,7 +75,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     lib_test_module.addAssemblyFile(b.path(assembly_file));
-
     lib_test_module.addImport("xev", libxev.module("xev"));
 
     const lib_tests = b.addTest(.{
@@ -58,57 +83,37 @@ pub fn build(b: *std.Build) void {
     const run_lib_tests = b.addRunArtifact(lib_tests);
     test_step.dependOn(&run_lib_tests.step);
 
-    var testDir: std.fs.Dir = b.build_root.handle.openDir("src/test/", .{ .iterate = true }) catch |e| {
-        std.debug.print("there is a error in opening the dir, and it is {any}\n", .{e});
-        @panic("\n");
+    // Test files discovery
+    var testDir = b.build_root.handle.openDir("src/test/", .{ .iterate = true }) catch |e| {
+        std.debug.print("Error opening test directory: {any}\n", .{e});
+        return;
     };
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
     defer testDir.close();
 
     var testDirIter = testDir.iterate();
-    var index: u16 = 0;
-    while (testDirIter.next() catch unreachable) |entry| {
-        if (entry.kind == .file) {
-            index = index + 1;
+    while (testDirIter.next() catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".zig")) {
+            const test_path = std.fmt.allocPrint(b.allocator, "src/test/{s}", .{entry.name}) catch continue;
+
+            const test_module = b.createModule(.{
+                .root_source_file = b.path(test_path),
+                .target = target,
+                .optimize = optimize,
+            });
+
+            test_module.addImport("xev", libxev.module("xev"));
+            test_module.addAssemblyFile(b.path(assembly_file));
+            test_module.addImport("ZigConcurrency", concurrency_module_no_asm);
+
+            const t = b.addTest(.{
+                .root_module = test_module,
+            });
+
+            const run_t = b.addRunArtifact(t);
+            test_step.dependOn(&run_t.step);
         }
-    }
-
-    var test_files = std.ArrayList([]const u8){};
-    defer {
-        for (test_files.items) |file| {
-            allocator.free(file);
-        }
-        test_files.deinit(allocator);
-    }
-
-    listFilesRecursive(testDir, "src/test", allocator, &test_files) catch unreachable;
-
-    for (test_files.items) |test_file| {
-        const test_module = b.createModule(.{
-            .root_source_file = b.path(test_file),
-            .target = target,
-            .optimize = optimize,
-        });
-
-        test_module.addImport("xev", libxev.module("xev"));
-
-        // Add assembly file to the test module itself
-        test_module.addAssemblyFile(b.path(assembly_file));
-
-        // Import the version WITHOUT assembly to avoid duplicates
-        test_module.addImport("ZigConcurrency", concurrency_module_no_asm);
-
-        const t = b.addTest(.{
-            .root_module = test_module,
-        });
-
-        const run_t = b.addRunArtifact(t);
-        test_step.dependOn(&run_t.step);
     }
 }
-
 fn listFilesRecursive(
     dir: std.fs.Dir,
     base_path: []const u8,

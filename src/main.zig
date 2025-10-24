@@ -1,17 +1,26 @@
 const std = @import("std");
 const zigConcurrency = @import("zigConcurrency");
-const Coroutine = @import("./coroutine/coroutine.zig").Coroutine;
+const Coroutine = @import("zigConcurrency").Coroutine;
+const Scheduler = @import("./scheduler/scheduler.zig");
+
+fn abc() void {
+    std.debug.print("hi we are in the abc fn\n", .{});
+}
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
+    // try calling();
+    // const alloc = std.heap.GeneralPurposeAllocator(.{}).init;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    var sc = Scheduler.Scheduler.init(allocator);
+    sc.go(&abc, .{});
+    std.debug.print("============\n", .{});
+
     std.debug.print("the  stack size of a() is {d} kb\n", .{@intFromPtr(&aFn) / 1000});
     std.debug.print("the  stack size of main() is {d} kn\n", .{@intFromPtr(&main) / 1000});
     std.debug.print("the fn b finished\n", .{});
     std.debug.print("\nin the main\n", .{});
-    try calling();
-    // const alloc = std.heap.GeneralPurposeAllocator(.{}).init;
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
     var coro = try Coroutine.initWithFunc(&fubCal, .{ 42, 100 }, allocator, .{});
     var main_coro2: Coroutine = .{
         .stack = &[_]u8{},
