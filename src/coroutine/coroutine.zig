@@ -151,7 +151,7 @@ pub const Coroutine = struct {
     /// starts running the coroutine if the [targetCoroutineToYieldTo] is null then we will crash, basically calls start from on itself
     pub fn startRunning(self: *Coroutine) void {
         assert.assertWithMessage(self.targetCoroutineToYieldTo != null, "to run the coroutine we need to have the targetCoroutineToYieldTo field not null\n");
-        return ziro_stack_swap(self.targetCoroutineToYieldTo, self);
+        return ziro_stack_swap(self.targetCoroutineToYieldTo.?, self);
     }
 };
 //
