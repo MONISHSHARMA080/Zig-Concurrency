@@ -45,7 +45,7 @@ comptime {
 
 extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;
 /// fn replaces the stack of the [currentlyRunning] fn with the [replaceWith]'s stack
-pub fn stackSwap(currentlyRunning: *anyopaque, replaceWith: *anyopaque) void {
+fn stackSwap(currentlyRunning: *anyopaque, replaceWith: *anyopaque) void {
     ziro_stack_swap(currentlyRunning, replaceWith);
 }
 
@@ -147,6 +147,11 @@ pub const Coroutine = struct {
             self.coroutineState = .Waiting;
             ziro_stack_swap(self, target);
         }
+    }
+    /// starts running the coroutine if the [targetCoroutineToYieldTo] is null then we will crash, basically calls start from on itself
+    pub fn startRunning(self: *Coroutine) void {
+        assert.assertWithMessage(self.targetCoroutineToYieldTo != null, "to run the coroutine we need to have the targetCoroutineToYieldTo field not null\n");
+        return ziro_stack_swap(self.targetCoroutineToYieldTo, self);
     }
 };
 //

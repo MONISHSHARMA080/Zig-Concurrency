@@ -7,8 +7,6 @@ pub const Scheduler = struct {
     allocator: std.mem.Allocator,
     schedulerInstanceOnThread: ?SchedulerInstanceOnThread,
     // coroutineToYieldTo: anyopaque = 1,
-    const coroutines = []anyopaque;
-    // const allocator: std.mem.Allocator;
     // const FnToExecute = *const fn (userData: *anyopaque) void;
 
     pub fn init(allocator: std.mem.Allocator) Scheduler {
@@ -16,6 +14,9 @@ pub const Scheduler = struct {
     }
 
     pub fn go(self: *Scheduler) void {
+
+        // this fn will take in a fn and convert it into a coroutine and store it somewhere(global run queue etc)
+
         // ok here is a quick and dirty version of the scheduler just take in the struct that has the fn and atis args as a array and then convert them into coro
         // and start executing them, if one of them yield then I want you to take the next one and start executing it  until the state is finnished
         //
@@ -32,7 +33,6 @@ pub const Scheduler = struct {
             .allocator = undefined,
         };
         defer main_coro.destroy();
-        // self.coroutineToYieldTo = main_coro;
         std.debug.print("in the scheduler's go fn\n", .{});
         coro1.targetCoroutineToYieldTo = &main_coro;
         coro2.targetCoroutineToYieldTo = &main_coro;
@@ -41,14 +41,15 @@ pub const Scheduler = struct {
             // Run coro1 if not finished
             if (coro1.coroutineState != .Finished) {
                 std.debug.print("[Scheduler loop] starting coro1\n", .{});
-                coro1.startFrom(&main_coro);
+                // coro1.startFrom(&main_coro);
+                coro1.startRunning();
                 std.debug.print("[Scheduler loop] coro1 has yielded\n", .{});
             }
 
             // Run coro2 if not finished
             if (coro2.coroutineState != .Finished) {
                 std.debug.print("[Scheduler loop] starting coro2\n", .{});
-                coro2.startFrom(&main_coro);
+                coro2.startRunning();
                 std.debug.print("[Scheduler loop] coro2 has yielded\n", .{});
             }
         }
@@ -56,8 +57,8 @@ pub const Scheduler = struct {
         std.debug.print("[Scheduler] Both coroutines finished!\n", .{});
         return;
     }
-    pub fn startExecuting() void {}
     pub fn yield(self: *Scheduler) void {
+        // now this fn has to go as we can't yield via the scheduler
         _ = self;
         // now to yield back to the Scheduler make a coroutine in the loop that is undefined and start from there
     }
