@@ -44,6 +44,10 @@ comptime {
 }
 
 extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;
+/// fn replaces the stack of the [currentlyRunning] fn with the [replaceWith]'s stack
+pub fn stackSwap(currentlyRunning: *anyopaque, replaceWith: *anyopaque) void {
+    ziro_stack_swap(currentlyRunning, replaceWith);
+}
 
 pub const CoroutineState = enum { NotRunning, Waiting, Finished, Running, Completed, WaitingForChannel };
 

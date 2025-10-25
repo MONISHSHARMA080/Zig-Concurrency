@@ -1,20 +1,19 @@
 const std = @import("std");
 const zigConcurrency = @import("zigConcurrency");
 const Coroutine = @import("zigConcurrency").Coroutine;
-const Scheduler = @import("./scheduler/scheduler.zig");
+// const Scheduler = @import("./scheduler/scheduler.zig");
+const Scheduler = zigConcurrency.Scheduler;
 
 fn abc() void {
     std.debug.print("hi we are in the abc fn\n", .{});
 }
 
 pub fn main() !void {
-    // Prints to stderr, ignoring potential errors.
-    // try calling();
-    // const alloc = std.heap.GeneralPurposeAllocator(.{}).init;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    var sc = Scheduler.Scheduler.init(allocator);
-    sc.go(&abc, .{});
+    var sc = Scheduler.init(allocator);
+    // sc.go(&abc, .{});
+    sc.go();
     std.debug.print("============\n", .{});
 
     std.debug.print("the  stack size of a() is {d} kb\n", .{@intFromPtr(&aFn) / 1000});
