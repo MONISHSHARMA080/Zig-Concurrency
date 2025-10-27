@@ -14,6 +14,7 @@ pub fn main() !void {
     var sc = Scheduler.init(allocator);
     // sc.go(&abc, .{});
     sc.go();
+
     std.debug.print("============\n", .{});
 
     std.debug.print("the  stack size of a() is {d} kb\n", .{@intFromPtr(&aFn) / 1000});

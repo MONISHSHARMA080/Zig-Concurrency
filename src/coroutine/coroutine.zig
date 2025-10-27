@@ -1,9 +1,148 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const assert = @import("../utils/assert.zig");
+const allocatorError = std.mem.Allocator.Error;
 
 pub const Error = error{
     StackTooSmall,
+};
+
+extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;
+/// fn replaces the stack of the [currentlyRunning] fn with the [replaceWith]'s stack
+fn stackSwap(currentlyRunning: *anyopaque, replaceWith: *anyopaque) void {
+    ziro_stack_swap(currentlyRunning, replaceWith);
+}
+
+pub const CoroutineState = enum {
+    NotRunning,
+    Waiting,
+    /// Finished is when the fn in the coroutine retturns and we have not called free
+    Finished,
+    Running,
+    /// Completed is when the coroutine fn is finished and we have called destroyed/free
+    // Completed,
+    WaitingForChannel,
+};
+
+pub const Coroutine = struct {
+    /// NOTE: keep this the first field as the assembly assumes(hardcoded) that you do if you not then you will get unknown error
+    stack_pointer: [*]u8,
+    stack: []u8,
+    coroutineState: CoroutineState = .NotRunning,
+    targetCoroutineToYieldTo: ?*Coroutine = null,
+
+    caller_fn: ?*const fn (*anyopaque, *Coroutine) void = null, // Added *CoroutineBase param
+    args_storage: [256]u8 align(8) = undefined,
+
+    allocator: std.mem.Allocator,
+
+    const Func = *const fn (
+        from: *Coroutine,
+        self: *Coroutine,
+    ) callconv(.c) noreturn;
+
+    const Self = @This();
+
+    /// we are still doing the double alloc and not returning the pointer
+    ///  resoning :->
+    ///     [*] we are doing 2 allocations, so we should minimize it and a fn that return coroutine struct where we allocate this once(empty struct)
+    ///      [*] now look we can use the one alloc to do it once but the thing is that it will be hard to move the coroutine in the scheduler's queue etc, if not
+    ///     [*]then the once alloc is the best option(move the pointer to the coro in the scheduler)
+    pub fn init(comptime user_func: anytype, args: anytype, allocator: std.mem.Allocator, config: struct {
+        stackAlignment: u8 = 16,
+        defaultStackSize: u16 = 1024 * 6,
+    }) err!*Coroutine {
+        if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
+        if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
+
+        const ArgsType = @TypeOf(args);
+        if (@sizeOf(ArgsType) > 256) @compileError("Args too large, increase args_storage size");
+
+        const coro_size = @sizeOf(Coroutine);
+        const total_size = coro_size + config.defaultStackSize;
+
+        // Single allocation - dead simple
+        const memory = try allocator.alloc(u8, total_size);
+        errdefer allocator.free(memory);
+
+        const resultCoro: *Coroutine = @ptrCast(@alignCast(memory.ptr));
+        const stack_slice = memory[coro_size..];
+        const register_bytes = archInfo.num_registers * 8;
+        if (register_bytes > stack_slice.len) return error.StackTooSmall;
+
+        const register_space = stack_slice[stack_slice.len - register_bytes ..];
+
+        const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[archInfo.jump_idx * 8]));
+        jump_ptr.* = coroutineWrapper;
+
+        const Caller = struct {
+            fn call(args_ptr: *anyopaque, coro: *Coroutine) void {
+                const typed_args = @as(*ArgsType, @ptrCast(@alignCast(args_ptr)));
+                const new_args = .{coro} ++ typed_args.*;
+                _ = @call(.auto, user_func, new_args);
+            }
+        };
+
+        resultCoro.* = Coroutine{
+            .stack_pointer = register_space.ptr,
+            .caller_fn = Caller.call,
+            .stack = stack_slice,
+            .allocator = allocator,
+            .coroutineState = .NotRunning,
+            .targetCoroutineToYieldTo = null,
+            // .args_storage = undefined,
+        };
+
+        const args_bytes = std.mem.asBytes(&args);
+        @memcpy(resultCoro.args_storage[0..args_bytes.len], args_bytes);
+
+        return resultCoro;
+    }
+    const err = error{StackTooSmall} || std.mem.Allocator.Error;
+
+    fn coroutineWrapper(from: *Coroutine, self: *Coroutine) callconv(.c) noreturn {
+        self.coroutineState = .Running;
+        self.targetCoroutineToYieldTo = from; // Set yield target automatically
+        if (self.caller_fn) |caller| {
+            caller(&self.args_storage, self); // Pass self to caller
+        }
+        self.coroutineState = .Finished;
+        ziro_stack_swap(self, from);
+        unreachable;
+    }
+
+    pub fn destroy(self: *Coroutine) void {
+        assert.assertWithMessage(self.coroutineState != .Running, "attempted to destroy a coroutine while it is running\n");
+        // assert.assertWithMessage(self.coroutineState == .Finished, "attempted to destroy a coroutine while it is has not returned\n");
+        const total_size = @sizeOf(Coroutine) + self.stack.len;
+        const memory: [*]u8 = @ptrCast(self);
+        const memory_slice = memory[0..total_size];
+
+        // Free the entire allocation (struct + stack together)
+        self.allocator.free(memory_slice);
+        std.debug.print("\n ======freeing the coroutine ========\n", .{});
+    }
+
+    pub inline fn resumeFrom(self: *Coroutine, from: *Coroutine) void {
+        return ziro_stack_swap(from, self);
+    }
+
+    // starts executing the coroutine given and put that stack
+    pub inline fn startFrom(self: *Coroutine, from: *Coroutine) void {
+        return ziro_stack_swap(from, self);
+    }
+
+    pub fn yield(self: *@This()) void {
+        if (self.targetCoroutineToYieldTo) |target| {
+            self.coroutineState = .Waiting;
+            ziro_stack_swap(self, target);
+        }
+    }
+    /// starts running the coroutine if the [targetCoroutineToYieldTo] is null then we will crash, basically calls start from on itself
+    pub fn startRunning(self: *Coroutine) void {
+        assert.assertWithMessage(self.targetCoroutineToYieldTo != null, "to run the coroutine we need to have the targetCoroutineToYieldTo field not null\n");
+        return ziro_stack_swap(self.targetCoroutineToYieldTo.?, self);
+    }
 };
 const ArchInfo = struct {
     num_registers: usize,
@@ -38,123 +177,6 @@ const archInfo: ArchInfo = switch (builtin.cpu.arch) {
         @compileError("Unsupported cpu architecture");
     },
 };
-
-comptime {
-    // asm (archInfo.assembly);
-}
-
-extern fn ziro_stack_swap(current: *anyopaque, target: *anyopaque) void;
-/// fn replaces the stack of the [currentlyRunning] fn with the [replaceWith]'s stack
-fn stackSwap(currentlyRunning: *anyopaque, replaceWith: *anyopaque) void {
-    ziro_stack_swap(currentlyRunning, replaceWith);
-}
-
-pub const CoroutineState = enum { NotRunning, Waiting, Finished, Running, Completed, WaitingForChannel };
-
-pub const Coroutine = struct {
-    /// NOTE: keep this the first field as the assembly assumes(hardcoded) that you do if you not then you will get unknown error
-    stack_pointer: [*]u8,
-    stack: []u8,
-    coroutineState: CoroutineState = .NotRunning,
-    targetCoroutineToYieldTo: ?*Coroutine = null,
-
-    caller_fn: ?*const fn (*anyopaque, *Coroutine) void = null, // Added *CoroutineBase param
-    args_storage: [256]u8 align(8) = undefined,
-
-    allocator: std.mem.Allocator,
-
-    const Func = *const fn (
-        from: *Coroutine,
-        self: *Coroutine,
-    ) callconv(.c) noreturn;
-
-    const Self = @This();
-
-    fn coroutineWrapper(from: *Coroutine, self: *Coroutine) callconv(.c) noreturn {
-        self.coroutineState = .Running;
-        self.targetCoroutineToYieldTo = from; // Set yield target automatically
-        if (self.caller_fn) |caller| {
-            caller(&self.args_storage, self); // Pass self to caller
-        }
-        self.coroutineState = .Finished;
-        ziro_stack_swap(self, from);
-        unreachable;
-    }
-
-    pub fn initWithFunc(comptime user_func: anytype, args: anytype, allocator: std.mem.Allocator, config: struct {
-        stackAlignment: u8 = 16,
-        /// for eg enter 1024 * 8 for 8KB, default is 5
-        defaultStackSize: u16 = 1024 * 6,
-    }) !Coroutine {
-        if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
-        if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
-
-        const ArgsType = @TypeOf(args);
-        if (@sizeOf(ArgsType) > 256) {
-            @compileError("Args too large, increase args_storage size");
-        }
-        var allocatedStack = try allocator.alloc(u8, config.defaultStackSize);
-
-        errdefer allocator.free(allocatedStack);
-
-        const register_bytes = archInfo.num_registers * 8;
-        if (register_bytes > allocatedStack.len) return error.StackTooSmall;
-
-        const register_space = allocatedStack[allocatedStack.len - register_bytes ..];
-
-        const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[archInfo.jump_idx * 8]));
-        jump_ptr.* = coroutineWrapper;
-
-        const Caller = struct {
-            fn call(args_ptr: *anyopaque, coro: *Coroutine) void {
-                const typed_args = @as(*ArgsType, @ptrCast(@alignCast(args_ptr)));
-                // Prepend coro to the args tuple
-                const new_args = .{coro} ++ typed_args.*;
-                _ = @call(.auto, user_func, new_args);
-            }
-        };
-
-        // where the fuck should I store the allocated stack and what is it's use, look into the previous one(stack allocating coro's stack on github)
-        var result = Coroutine{
-            .stack_pointer = register_space.ptr,
-            .caller_fn = Caller.call,
-            .stack = allocatedStack,
-            .allocator = allocator,
-        };
-
-        const args_bytes = std.mem.asBytes(&args);
-        @memcpy(result.args_storage[0..args_bytes.len], args_bytes);
-        return result;
-    }
-
-    pub fn destroy(self: *Coroutine) void {
-        assert.assertWithMessage(self.coroutineState != .Running, "attempted to destroy a coroutine while it is running\n");
-        self.allocator.free(self.stack);
-        self.coroutineState = .Completed;
-    }
-
-    pub inline fn resumeFrom(self: *Coroutine, from: *Coroutine) void {
-        return ziro_stack_swap(from, self);
-    }
-
-    // starts executing the coroutine given and put that stack
-    pub inline fn startFrom(self: *Coroutine, from: *Coroutine) void {
-        return ziro_stack_swap(from, self);
-    }
-
-    pub fn yield(self: *@This()) void {
-        if (self.targetCoroutineToYieldTo) |target| {
-            self.coroutineState = .Waiting;
-            ziro_stack_swap(self, target);
-        }
-    }
-    /// starts running the coroutine if the [targetCoroutineToYieldTo] is null then we will crash, basically calls start from on itself
-    pub fn startRunning(self: *Coroutine) void {
-        assert.assertWithMessage(self.targetCoroutineToYieldTo != null, "to run the coroutine we need to have the targetCoroutineToYieldTo field not null\n");
-        return ziro_stack_swap(self.targetCoroutineToYieldTo.?, self);
-    }
-};
-//
 // this lib will provide(not this , I am talking about the lib as a whole), 2 fn go(Fn) and goRunCoro(Fn)- the go is like
 // the golang one while the goRunCoro will take in a fn and that fn should take in the argument Corotine type as I want to allow
 // the fn to pasue or resume later

@@ -1,5 +1,6 @@
 const std = @import("std");
 const Coroutine = @import("ZigConcurrency").Coroutine;
+const CoroutineFn = @import("ZigConcurrency").CoroutineFn;
 const assert = std.debug.assert;
 
 /// Creates an array containing all numbers from `start` to `end` (inclusive) in random order
@@ -59,7 +60,8 @@ fn calling() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     std.debug.print("in the calling and creating coro and main_coro2 \n", .{});
-    var coro = try Coroutine.initWithFunc(&aFn, .{}, allocator, .{});
+    // var coro = try Coroutine.initWithFunc(&aFn, .{}, allocator, .{});
+    var coro = try CoroutineFn(allocator, .{}).init(&aFn, .{});
     defer coro.destroy();
     std.debug.print("in the calling() and attempting to call main_coro2 from it \n", .{});
     var main_coro2: Coroutine = .{
@@ -246,9 +248,13 @@ test "checking if the coroutine can pause and resume" {
     for (start..end, 0..) |value, index| {
         const a = @as(u64, value);
         // _ = index;
-        var evenNoInCoro = try Coroutine.initWithFunc(&putTheEvenNoInArray, .{ a, index, sortedArray, array }, allocator, .{});
+        var evenNoInCoro = try Coroutine.init(&putTheEvenNoInArray, .{ a, index, sortedArray, array }, allocator, .{});
+        // var evenNoInCoro = try CoroutineFn(.{}).init(&putTheEvenNoInArray, .{ a, index, sortedArray, array }, allocator);
+        // std.debug.print("the size of the *corotine is {d} and corotine is {d}\n", .{ @sizeOf(bool), @sizeOf(evenNoInCoro.*) });
+
+        std.debug.print("=====Coroutine with the Fn and not with the struct ======\n", .{});
         defer evenNoInCoro.destroy();
-        var oddNoInCoro = try Coroutine.initWithFunc(&putTheOddNoInArray, .{ a, index, sortedArray, array }, allocator, .{});
+        var oddNoInCoro = try Coroutine.init(&putTheOddNoInArray, .{ a, index, sortedArray, array }, allocator, .{});
         defer oddNoInCoro.destroy();
         if (@mod(value, 2) == 0) {
             // putTheEvenNoInArray(&main_coro, a, index, sortedArray, array);

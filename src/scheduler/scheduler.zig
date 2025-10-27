@@ -1,16 +1,22 @@
 const std = @import("std");
 // const coroutine = @import("ZigConcurrency").Coroutine;
 const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
+//
+//probelm: how do we integrate the runtime here, like when the
+//
+//todo: 1st we need to design the schedulerInstanceOnThread, then we need to make the libxev loop in there running
+//
+//
+//
 
 pub const Scheduler = struct {
     // this is the global Scheduler that will be there, now what the fn executing could have is the instance to the
     allocator: std.mem.Allocator,
-    schedulerInstanceOnThread: ?SchedulerInstanceOnThread,
-    // coroutineToYieldTo: anyopaque = 1,
-    // const FnToExecute = *const fn (userData: *anyopaque) void;
+    schedulerInstanceOnThread: ?SchedulerInstancePerThread,
+    globalRunQueue: std.ArrayList(coroutine),
 
-    pub fn init(allocator: std.mem.Allocator) Scheduler {
-        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null };
+    pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Scheduler {
+        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try std.ArrayList(coroutine).initCapacity(allocator, 200) };
     }
 
     pub fn go(self: *Scheduler) void {
@@ -94,7 +100,7 @@ fn two(coro: *coroutine, scheduler: *Scheduler) void {
     }
 }
 
-const SchedulerInstanceOnThread = struct {
+const SchedulerInstancePerThread = struct {
     // this is the global Scheduler that will be there, now what the fn executing could have is the instance to the
     allocator: std.mem.Allocator,
     const FnToExecute = *const fn (userData: anyopaque) void;
