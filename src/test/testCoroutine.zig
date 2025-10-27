@@ -245,6 +245,7 @@ test "checking if the coroutine can pause and resume" {
         .stack_pointer = undefined,
         .allocator = allocator,
     };
+
     for (start..end, 0..) |value, index| {
         const a = @as(u64, value);
         // _ = index;

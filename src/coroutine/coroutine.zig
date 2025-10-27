@@ -60,6 +60,7 @@ pub const Coroutine = struct {
 
         const coro_size = @sizeOf(Coroutine);
         const total_size = coro_size + config.defaultStackSize;
+        std.debug.print("== size of the coro allocated is {d}\n", .{total_size});
 
         // Single allocation - dead simple
         const memory = try allocator.alloc(u8, total_size);
@@ -120,7 +121,7 @@ pub const Coroutine = struct {
 
         // Free the entire allocation (struct + stack together)
         self.allocator.free(memory_slice);
-        std.debug.print("\n ======freeing the coroutine ========\n", .{});
+        // std.debug.print("\n ======freeing the coroutine ========\n", .{});
     }
 
     pub inline fn resumeFrom(self: *Coroutine, from: *Coroutine) void {
