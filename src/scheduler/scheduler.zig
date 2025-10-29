@@ -1,10 +1,12 @@
 const std = @import("std");
 // const coroutine = @import("ZigConcurrency").Coroutine;
 const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
+const util = @import("../utils/typeChecking.zig");
 //
 //probelm: how do we integrate the runtime here, like when the
 //
 //todo: 1st we need to design the schedulerInstanceOnThread, then we need to make the libxev loop in there running
+//
 //
 //
 //
@@ -13,14 +15,21 @@ pub const Scheduler = struct {
     // this is the global Scheduler that will be there, now what the fn executing could have is the instance to the
     allocator: std.mem.Allocator,
     schedulerInstanceOnThread: ?SchedulerInstancePerThread,
-    globalRunQueue: std.ArrayList(coroutine),
+    globalRunQueue: std.ArrayList(*coroutine),
 
-    pub fn init(allocator: std.mem.Allocator) std.mem.Allocator.Error!Scheduler {
-        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try std.ArrayList(coroutine).initCapacity(allocator, 200) };
+    pub fn init(allocator: std.mem.Allocator, options: struct { defualtGlobalRunQueueSize: u64 = 600 }) std.mem.Allocator.Error!Scheduler {
+        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try std.ArrayList(*coroutine).initCapacity(allocator, options.defualtGlobalRunQueueSize) };
     }
 
-    pub fn go(self: *Scheduler) void {
+    pub fn destroy(self: *Scheduler) void {
+        self.globalRunQueue.deinit(self.allocator);
+    }
 
+    pub fn go(self: *Scheduler, comptime Fn: anytype, comptime fnArgs: anytype, options: struct {
+        /// if there are 2 same types of the param then you need to provide their type 2 times as we will only skip for one type in the array once
+        typeToSkipInChecking: ?[]const type = &[_]type{*coroutine},
+        skipTypeChecking: bool = false,
+    }) void {
         // this fn will take in a fn and convert it into a coroutine and store it somewhere(global run queue etc)
 
         // ok here is a quick and dirty version of the scheduler just take in the struct that has the fn and atis args as a array and then convert them into coro
@@ -29,8 +38,16 @@ pub const Scheduler = struct {
         // just hardcode some fn here and make them start
         //
 
-        var coro1 = coroutine.initWithFunc(&one, .{self}, self.allocator, .{}) catch unreachable;
-        var coro2 = coroutine.initWithFunc(&two, .{self}, self.allocator, .{}) catch unreachable;
+        if (options.skipTypeChecking == false) {
+            const typeIsCorrect = comptime util.validateArgsMatchFunction(Fn, fnArgs, options.typeToSkipInChecking);
+            if (!typeIsCorrect) @compileError("there is a type mismatch between the fn and the parameter type in the args provided");
+        }
+        const coro = coroutine.init(Fn, fnArgs, self.allocator, .{}) catch unreachable;
+        self.globalRunQueue.append(self.allocator, coro) catch unreachable;
+        // self.globalRunQueue.print(self.allocator, "the global run queue is \n", .{}) catch unreachable;
+
+        var coro1 = coroutine.init(&one, .{self}, self.allocator, .{}) catch unreachable;
+        var coro2 = coroutine.init(&two, .{self}, self.allocator, .{}) catch unreachable;
         defer coro1.destroy();
         defer coro2.destroy();
         var main_coro: coroutine = .{
@@ -38,7 +55,7 @@ pub const Scheduler = struct {
             .stack_pointer = undefined,
             .allocator = undefined,
         };
-        defer main_coro.destroy();
+        // defer main_coro.destroy();
         std.debug.print("in the scheduler's go fn\n", .{});
         coro1.targetCoroutineToYieldTo = &main_coro;
         coro2.targetCoroutineToYieldTo = &main_coro;
@@ -62,11 +79,6 @@ pub const Scheduler = struct {
 
         std.debug.print("[Scheduler] Both coroutines finished!\n", .{});
         return;
-    }
-    pub fn yield(self: *Scheduler) void {
-        // now this fn has to go as we can't yield via the scheduler
-        _ = self;
-        // now to yield back to the Scheduler make a coroutine in the loop that is undefined and start from there
     }
 };
 

@@ -4,16 +4,17 @@ const Coroutine = @import("zigConcurrency").Coroutine;
 // const Scheduler = @import("./scheduler/scheduler.zig");
 const Scheduler = zigConcurrency.Scheduler;
 
-fn abc() void {
+fn abc(s: *Coroutine) void {
+    _ = s;
     std.debug.print("hi we are in the abc fn\n", .{});
 }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    var sc = Scheduler.init(allocator);
-    // sc.go(&abc, .{});
-    sc.go();
+    var sc = try Scheduler.init(allocator, .{});
+    sc.go(&abc, .{}, .{});
+    defer sc.destroy();
 
     std.debug.print("============\n", .{});
 
@@ -21,13 +22,13 @@ pub fn main() !void {
     std.debug.print("the  stack size of main() is {d} kn\n", .{@intFromPtr(&main) / 1000});
     std.debug.print("the fn b finished\n", .{});
     std.debug.print("\nin the main\n", .{});
-    var coro = try Coroutine.initWithFunc(&fubCal, .{ 42, 100 }, allocator, .{});
+    var coro = try Coroutine.init(&fubCal, .{ 42, 100 }, allocator, .{});
     var main_coro2: Coroutine = .{
         .stack = &[_]u8{},
         .stack_pointer = undefined,
         .allocator = undefined,
     };
-    defer main_coro2.destroy();
+    // defer main_coro2.destroy();
     defer coro.destroy();
     std.debug.print("State after created: {}\n", .{coro.coroutineState}); // .Finished
     for (0..10) |i| {
@@ -47,7 +48,7 @@ fn calling() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     std.debug.print("in the calling and creating coro and main_coro2 \n", .{});
-    var coro = try Coroutine.initWithFunc(&aFn, .{}, allocator, .{});
+    var coro = try Coroutine.init(&aFn, .{}, allocator, .{});
     defer coro.destroy();
     std.debug.print("in the calling() and attempting to call main_coro2 from it \n", .{});
     var main_coro2: Coroutine = .{

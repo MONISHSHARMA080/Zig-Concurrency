@@ -266,6 +266,7 @@ test "checking if the coroutine can pause and resume" {
             oddNoInCoro.resumeFrom(&main_coro);
             std.debug.print("got out from odd coro \n", .{});
         }
+        // std.debug.print("total requested bytes are {any}\n", .{gpa.total_requested_bytes});
     }
     defer allocator.free(sortedArray);
 

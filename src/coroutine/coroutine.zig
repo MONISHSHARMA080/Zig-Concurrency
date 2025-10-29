@@ -43,11 +43,6 @@ pub const Coroutine = struct {
 
     const Self = @This();
 
-    /// we are still doing the double alloc and not returning the pointer
-    ///  resoning :->
-    ///     [*] we are doing 2 allocations, so we should minimize it and a fn that return coroutine struct where we allocate this once(empty struct)
-    ///      [*] now look we can use the one alloc to do it once but the thing is that it will be hard to move the coroutine in the scheduler's queue etc, if not
-    ///     [*]then the once alloc is the best option(move the pointer to the coro in the scheduler)
     pub fn init(comptime user_func: anytype, args: anytype, allocator: std.mem.Allocator, config: struct {
         stackAlignment: u8 = 16,
         defaultStackSize: u16 = 1024 * 6,
@@ -60,7 +55,6 @@ pub const Coroutine = struct {
 
         const coro_size = @sizeOf(Coroutine);
         const total_size = coro_size + config.defaultStackSize;
-        std.debug.print("== size of the coro allocated is {d}\n", .{total_size});
 
         // Single allocation - dead simple
         const memory = try allocator.alloc(u8, total_size);
@@ -68,6 +62,7 @@ pub const Coroutine = struct {
 
         const resultCoro: *Coroutine = @ptrCast(@alignCast(memory.ptr));
         const stack_slice = memory[coro_size..];
+
         const register_bytes = archInfo.num_registers * 8;
         if (register_bytes > stack_slice.len) return error.StackTooSmall;
 
