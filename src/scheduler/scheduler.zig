@@ -2,27 +2,28 @@ const std = @import("std");
 // const coroutine = @import("ZigConcurrency").Coroutine;
 const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
 const util = @import("../utils/typeChecking.zig");
+const queue = @import("../utils/queue.zig").ThreadSafeQueue;
 //
 //probelm: how do we integrate the runtime here, like when the
 //
 //todo: 1st we need to design the schedulerInstanceOnThread, then we need to make the libxev loop in there running
-//
-//
-//
 //
 
 pub const Scheduler = struct {
     // this is the global Scheduler that will be there, now what the fn executing could have is the instance to the
     allocator: std.mem.Allocator,
     schedulerInstanceOnThread: ?SchedulerInstancePerThread,
-    globalRunQueue: std.ArrayList(*coroutine),
+    globalRunQueue: queue(*coroutine, .{}),
+    // globalRunQueue: ?std.ArrayList(*coroutine),
 
     pub fn init(allocator: std.mem.Allocator, options: struct { defualtGlobalRunQueueSize: u64 = 600 }) std.mem.Allocator.Error!Scheduler {
-        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try std.ArrayList(*coroutine).initCapacity(allocator, options.defualtGlobalRunQueueSize) };
+        _ = options;
+        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try queue(*coroutine, .{}).init(allocator) };
     }
 
+    /// impl it
     pub fn destroy(self: *Scheduler) void {
-        self.globalRunQueue.deinit(self.allocator);
+        _ = self;
     }
 
     pub fn go(self: *Scheduler, comptime Fn: anytype, comptime fnArgs: anytype, options: struct {
@@ -31,13 +32,10 @@ pub const Scheduler = struct {
         skipTypeChecking: bool = false,
     }) void {
         // this fn will take in a fn and convert it into a coroutine and store it somewhere(global run queue etc)
-
         // ok here is a quick and dirty version of the scheduler just take in the struct that has the fn and atis args as a array and then convert them into coro
         // and start executing them, if one of them yield then I want you to take the next one and start executing it  until the state is finnished
         //
         // just hardcode some fn here and make them start
-        //
-
         if (options.skipTypeChecking == false) {
             const typeIsCorrect = comptime util.validateArgsMatchFunction(Fn, fnArgs, options.typeToSkipInChecking);
             if (!typeIsCorrect) @compileError("there is a type mismatch between the fn and the parameter type in the args provided");
