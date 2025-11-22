@@ -13,12 +13,12 @@ pub const Scheduler = struct {
     // this is the global Scheduler that will be there, now what the fn executing could have is the instance to the
     allocator: std.mem.Allocator,
     schedulerInstanceOnThread: ?SchedulerInstancePerThread,
-    globalRunQueue: queue(*coroutine, .{}),
+    globalRunQueue: queue(*coroutine, .{ .listSize = 650 }),
+
     // globalRunQueue: ?std.ArrayList(*coroutine),
 
-    pub fn init(allocator: std.mem.Allocator, options: struct { defualtGlobalRunQueueSize: u64 = 600 }) std.mem.Allocator.Error!Scheduler {
-        _ = options;
-        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try queue(*coroutine, .{}).init(allocator) };
+    pub fn init(allocator: std.mem.Allocator, comptime options: struct { defualtGlobalRunQueueSize: u64 = 650 }) std.mem.Allocator.Error!Scheduler {
+        return Scheduler{ .allocator = allocator, .schedulerInstanceOnThread = null, .globalRunQueue = try queue(*coroutine, .{ .listSize = options.defualtGlobalRunQueueSize }).init(allocator) };
     }
 
     /// impl it
@@ -31,6 +31,23 @@ pub const Scheduler = struct {
         typeToSkipInChecking: ?[]const type = &[_]type{*coroutine},
         skipTypeChecking: bool = false,
     }) void {
+        std.debug.print("\n trying the queue\n", .{});
+        var queue1 = queue(u64, .{ .listSize = 100 }).init(self.allocator) catch unreachable;
+        // const a:u64 = 1;
+        // const b:u64 = 300;
+        for (1..600) |value| {
+            const val: u64 = @intCast(value);
+            queue1.put(val) catch unreachable;
+        }
+        for (1..600) |value| {
+            const val = queue1.pop();
+            if (val) |a| {
+                std.debug.print("the value at index:{d} is {d}\n", .{ value, a });
+            } else {
+                std.debug.print("the value at index:{d} is null\n", .{value});
+            }
+        }
+
         // this fn will take in a fn and convert it into a coroutine and store it somewhere(global run queue etc)
         // ok here is a quick and dirty version of the scheduler just take in the struct that has the fn and atis args as a array and then convert them into coro
         // and start executing them, if one of them yield then I want you to take the next one and start executing it  until the state is finnished
@@ -41,7 +58,7 @@ pub const Scheduler = struct {
             if (!typeIsCorrect) @compileError("there is a type mismatch between the fn and the parameter type in the args provided");
         }
         const coro = coroutine.init(Fn, fnArgs, self.allocator, .{}) catch unreachable;
-        self.globalRunQueue.append(self.allocator, coro) catch unreachable;
+        self.globalRunQueue.put(coro) catch unreachable;
         // self.globalRunQueue.print(self.allocator, "the global run queue is \n", .{}) catch unreachable;
 
         var coro1 = coroutine.init(&one, .{self}, self.allocator, .{}) catch unreachable;
