@@ -94,7 +94,7 @@ pub const Coroutine = struct {
 
         return resultCoro;
     }
-    const err = error{StackTooSmall} || std.mem.Allocator.Error;
+    pub const err = error{StackTooSmall} || std.mem.Allocator.Error;
 
     fn coroutineWrapper(from: *Coroutine, self: *Coroutine) callconv(.c) noreturn {
         self.coroutineState = .Running;

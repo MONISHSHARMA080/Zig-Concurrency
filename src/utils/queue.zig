@@ -16,7 +16,6 @@ pub fn ThreadSafeQueue(T: type, config: struct {
     return struct {
         allocator: std.mem.Allocator,
         nodeNumber: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
-        Queue: *Node,
         ///  this is used for the poping as we will get the Fisrt element,
         ///  this one points to the element that you can get and not the empty reigon of memory, so after you get the element you have to either go to the next
         ///  node in queue or if it is not there then set it to null(and also return it too)
@@ -63,17 +62,37 @@ pub fn ThreadSafeQueue(T: type, config: struct {
             // nodeIndex: u64,
         };
 
+        pub fn destroy(self: *Self) void {
+            var currentNode: ?Node = self.queueStart.nodePtr;
+            while (currentNode) |node| {
+                currentNode = node.nextListPtr;
+                const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
+                const mem: []u8 = @as([*]u8, @ptrCast(node))[0..size];
+                self.allocator.free(mem);
+            }
+            currentNode = self.freedList;
+            while (currentNode) |node| {
+                currentNode = node.nextListPtr;
+                const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
+                const mem: []u8 = @as([*]u8, @ptrCast(node))[0..size];
+                self.allocator.free(mem);
+            }
+        }
+
         /// *NOTE* *:* this keeps the nodeId/nodeNumber same and perform no operations on it
-        fn allocateNewNode(self: *Self, allocator: Allocator) Allocator.Error!*Node {
+        fn allocateNewNode(param: union(enum) { self: *Self, allocator: Allocator }) Allocator.Error!*Node {
+            const allocator = switch (param) {
+                .allocator => |v| v,
+                .self => |b| b.allocator,
+            };
             const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
             const mem = try allocator.alloc(u8, size);
             const node: *Node = @ptrCast(@alignCast(mem.ptr));
             const allocatedList: []T = @ptrCast(@alignCast(mem[@sizeOf(Node)..]));
             node.nextListPtr = null;
             node.list = allocatedList;
-            // node.nodeId = self.nodeNumber.load(.monotonic);
-            _ = self;
             node.*.lock = std.Thread.Mutex{};
+            node.indexFilled = 0;
             return node;
         }
 
@@ -99,7 +118,7 @@ pub fn ThreadSafeQueue(T: type, config: struct {
                         if (self.queueStart.nodePtr.nodeId == self.queueStart.nodePtr.nodeId) { // same nodes
                             // check if we have no items left to pop
                             if (self.queueStart.nodePtr.indexFilled == self.queueEnd.itemIndex and self.queueStart.itemIndex == self.queueEnd.nodePtr.indexFilled) {
-                                std.debug.print("we have reached the cond where the pop can't remove element as the put has not return ahead in this node \n", .{});
+                                std.debug.print("we have reached the cond where the pop can't remove element as the put has not written ahead in this node \n", .{});
                                 // break :val null;
                                 return null; // as no more incrementation
                             } else break :val self.queueStart.nodePtr.list[self.queueStart.itemIndex];
@@ -173,7 +192,7 @@ pub fn ThreadSafeQueue(T: type, config: struct {
                     break :node startNode;
                 } else {
                     // through the alloc
-                    const allocatedNode = self.allocateNewNode(self.allocator) catch return null;
+                    const allocatedNode = allocateNewNode(.{ .allocator = self.allocator }) catch return null;
                     allocatedNode.nextListPtr = null;
                     allocatedNode.indexFilled = 0;
                     const currentNodeId = self.nodeNumber.fetchAdd(1, .monotonic);
@@ -254,16 +273,10 @@ pub fn ThreadSafeQueue(T: type, config: struct {
         }
 
         pub fn init(allocator2: std.mem.Allocator) std.mem.Allocator.Error!Self {
-            const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
-            const mem = try allocator2.alloc(u8, size);
-            var node: *Node = @ptrCast(@alignCast(mem.ptr));
-            const allocatedList: []T = @ptrCast(@alignCast(mem[@sizeOf(Node)..]));
-            node.nextListPtr = null;
-            node.list = allocatedList;
-            node.*.lock = std.Thread.Mutex{};
+            var node: *Node = allocateNewNode(.{ .allocator = allocator2 });
 
             var self = Self{
-                .Queue = node,
+                // .Queue = node,
                 .allocator = allocator2,
                 .queueStart = .{ .nodePtr = node, .itemIndex = 0 },
                 .queueEnd = .{ .nodePtr = node, .itemIndex = 0 },

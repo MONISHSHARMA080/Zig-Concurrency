@@ -13,7 +13,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     var sc = try Scheduler.init(allocator, .{});
-    sc.go(&abc, .{}, .{});
+    try sc.go(&abc, .{}, .{});
     defer sc.destroy();
 
     std.debug.print("============\n", .{});
