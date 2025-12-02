@@ -1,6 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const alc = Allocator.Error.OutOfMemory;
+const allocOutOfMemError = Allocator.Error;
 const assert = std.debug.assert;
 const asserts = @import("./assert.zig");
 const assertWithMessage = asserts.assertWithMessage;
@@ -76,6 +76,44 @@ pub fn ThreadSafeQueue(T: type, config: struct {
                 const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
                 const mem: []u8 = @as([*]u8, @ptrCast(node))[0..size];
                 self.allocator.free(mem);
+            }
+        }
+
+        pub fn putNTimes(self: *Self, elementsToPut: []T) allocOutOfMemError!void {
+            // take in a array and use put() to add n time
+            for (elementsToPut) |value| {
+                try self.put(value);
+            }
+            return;
+        }
+
+        pub fn popNTimesOrLess(self: *Self, comptime option: struct { numberOfCoroToGet: u32 = 10, arrayToReturn: ?[]T = null }) ?[]T {
+            switch (option.arrayToReturn) {
+                null => {
+                    var arrayToReturn: [option.numberOfCoroToGet]T = undefined;
+                    for (0..option.numberOfCoroToGet) |i| {
+                        if (self.pop()) |val| {
+                            assert(i < arrayToReturn.len);
+                            arrayToReturn[i] = val;
+                        } else {
+                            if (i == 0) return null;
+                            return arrayToReturn[0..i];
+                        }
+                    }
+                    return arrayToReturn;
+                },
+                else => {
+                    for (0..option.numberOfCoroToGet) |i| {
+                        if (self.pop()) |val| {
+                            assert(i < option.arrayToReturn.?.len);
+                            option.arrayToReturn[i] = val;
+                        } else {
+                            if (i == 0) return null;
+                            return option.arrayToReturn[0..i];
+                        }
+                    }
+                    return option.arrayToReturn.?;
+                },
             }
         }
 
