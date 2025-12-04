@@ -7,13 +7,9 @@ const assertWithMessage = asserts.assertWithMessage;
 const cmpPrint = std.fmt.comptimePrint;
 
 /// FIFO queue
-pub fn ThreadSafeQueue(T: type, config: struct {
-    /// size of the arrayList we do during each allocation
-    listSize: u64 = 180,
-}) type {
-    assertWithMessage(config.listSize > 0, "the listSize should be greater than 0\n");
-
+pub fn ThreadSafeQueue(T: type) type {
     return struct {
+        listSize: u64,
         allocator: std.mem.Allocator,
         nodeNumber: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
         ///  this is used for the poping as we will get the Fisrt element,
@@ -66,14 +62,14 @@ pub fn ThreadSafeQueue(T: type, config: struct {
             var currentNode: ?Node = self.queueStart.nodePtr;
             while (currentNode) |node| {
                 currentNode = node.nextListPtr;
-                const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
+                const size = @sizeOf(Node) + @sizeOf(T) * self.listSize;
                 const mem: []u8 = @as([*]u8, @ptrCast(node))[0..size];
                 self.allocator.free(mem);
             }
             currentNode = self.freedList;
             while (currentNode) |node| {
                 currentNode = node.nextListPtr;
-                const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
+                const size = @sizeOf(Node) + @sizeOf(T) * self.listSize;
                 const mem: []u8 = @as([*]u8, @ptrCast(node))[0..size];
                 self.allocator.free(mem);
             }
@@ -118,12 +114,17 @@ pub fn ThreadSafeQueue(T: type, config: struct {
         }
 
         /// *NOTE* *:* this keeps the nodeId/nodeNumber same and perform no operations on it
-        fn allocateNewNode(param: union(enum) { self: *Self, allocator: Allocator }) Allocator.Error!*Node {
+        fn allocateNewNode(param: union(enum) { self: *Self, new: struct { allocator: Allocator, listSize: u64 } }) Allocator.Error!*Node {
             const allocator = switch (param) {
-                .allocator => |v| v,
+                .new => |v| v.allocator,
                 .self => |b| b.allocator,
             };
-            const size = @sizeOf(Node) + @sizeOf(T) * config.listSize;
+            const listSize = switch (param) {
+                .new => |v| v.listSize,
+                .self => |b| b.listSize,
+            };
+            const size = @sizeOf(Node) + @sizeOf(T) * listSize;
+
             const mem = try allocator.alloc(u8, size);
             const node: *Node = @ptrCast(@alignCast(mem.ptr));
             const allocatedList: []T = @ptrCast(@alignCast(mem[@sizeOf(Node)..]));
@@ -148,7 +149,7 @@ pub fn ThreadSafeQueue(T: type, config: struct {
                 else => {
                     // take the element to return and return it then increment the ptr to the next element
                     // const elementToReturn = self.queueStart.itemPtr.?.*;
-                    asserts.assertWithMessageFmtRuntime(self.queueStart.itemIndex <= config.listSize, "the itemIndex to remove the element {d} from node {d} is not <= size of the list {d} ", .{ self.queueStart.itemIndex, self.queueStart.nodePtr.nodeId, config.listSize });
+                    asserts.assertWithMessageFmtRuntime(self.queueStart.itemIndex <= self.listSize, "the itemIndex to remove the element {d} from node {d} is not <= size of the list {d} ", .{ self.queueStart.itemIndex, self.queueStart.nodePtr.nodeId, self.listSize });
                     //TODO: you can't do that first check if we can remove the eleements or not , remove thsi
                     // const elementToReturn = self.queueStart.nodePtr.list[self.queueStart.itemIndex];
                     //
@@ -283,17 +284,17 @@ pub fn ThreadSafeQueue(T: type, config: struct {
             // now insert
             // std.debug.print("\n;) the cantAllocateAfterThis is {any}\n", .{self.cantAllocateAfterThis});
             std.debug.print(" at node:{d} , we are at {d} \n", .{ self.queueEnd.nodePtr.nodeId, self.queueEnd.itemIndex });
-            asserts.assertWithMessageFmtRuntime(self.queueEnd.itemIndex < config.listSize, "we are outside the array bounds, the array len([0..len-1]) is {d} and we are at {d} \n", .{ config.listSize, self.queueEnd.itemIndex });
+            asserts.assertWithMessageFmtRuntime(self.queueEnd.itemIndex < self.listSize, "we are outside the array bounds, the array len([0..len-1]) is {d} and we are at {d} \n", .{ self.listSize, self.queueEnd.itemIndex });
             self.queueEnd.nodePtr.list[self.queueEnd.itemIndex] = value;
             self.queueEnd.nodePtr.indexFilled += 1;
             if (self.cantAllocateAfterThis) {
                 // if we alllocated after a failed attempt and also inserted it in then the array index is at 0 index in that one
-                assert(self.queueEnd.itemIndex + 1 <= config.listSize);
+                assert(self.queueEnd.itemIndex + 1 <= self.listSize);
                 self.queueEnd.itemIndex += 1;
                 self.cantAllocateAfterThis = false;
             }
             // increment the ptr to the next node if it is at the end then allocate a new node if not able to then set the self.cantAllocateAfterThis to true
-            if (self.queueEnd.itemIndex + 1 >= config.listSize) {
+            if (self.queueEnd.itemIndex + 1 >= self.listSize) {
                 // new node
                 std.debug.print("the current node's next node ptr is {any} \n and also current node is {} \n", .{ self.queueEnd.nodePtr.nextListPtr, self.queueEnd.nodePtr.* });
 
@@ -310,11 +311,15 @@ pub fn ThreadSafeQueue(T: type, config: struct {
             }
         }
 
-        pub fn init(allocator2: std.mem.Allocator) std.mem.Allocator.Error!Self {
-            var node: *Node = allocateNewNode(.{ .allocator = allocator2 });
+        pub fn init(allocator2: std.mem.Allocator, comptime config: struct {
+            /// size of the arrayList we do during each allocation
+            listSize: u64 = 180,
+        }) std.mem.Allocator.Error!Self {
+            assertWithMessage(config.listSize > 0, "the listSize should be greater than 0\n");
+            var node: *Node = try allocateNewNode(.{ .allocator = allocator2 });
 
             var self = Self{
-                // .Queue = node,
+                .listSize = config.listSize,
                 .allocator = allocator2,
                 .queueStart = .{ .nodePtr = node, .itemIndex = 0 },
                 .queueEnd = .{ .nodePtr = node, .itemIndex = 0 },
@@ -325,13 +330,5 @@ pub fn ThreadSafeQueue(T: type, config: struct {
             node.nodeId = self.nodeNumber.fetchAdd(1, .monotonic);
             return self;
         }
-
-        // pub fn appendNonBlocking(self: *Self, value: T, options: struct { tryForTimes: u16 = 5 }) !void {
-        //     // self.Queue.append()
-        //     // now since this is FIFO so we need to take the
-        //     _ = options;
-        //     _ = self;
-        //     _ = value;
-        // }
     };
 }
