@@ -31,7 +31,7 @@ pub fn main() !void {
     // defer main_coro2.destroy();
     defer coro.destroy();
     std.debug.print("State after created: {}\n", .{coro.coroutineState}); // .Finished
-    for (0..10) |i| {
+    for (0..100) |i| {
         if (coro.coroutineState != .Finished) {
             std.debug.print("the corotine is not finish  in main at {d}\n", .{i});
             coro.resumeFrom(&main_coro2);

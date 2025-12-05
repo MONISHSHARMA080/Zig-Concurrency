@@ -5,151 +5,65 @@ const util = @import("../utils/typeChecking.zig");
 const queue = @import("../utils/queue.zig").ThreadSafeQueue;
 const libxev = @import("xev");
 const Allocator = std.mem.Allocator;
-const allocOutOfMem = Allocator.Error;
+const AllocOutOfMemErr = Allocator.Error;
 const asserts = @import("../utils/assert.zig");
 const assertWithMessage = asserts.assertWithMessageFmt;
 const assertWithRuntimeMessage = asserts.assertWithMessageFmtRuntime;
 const SchedulerInstancePerThread = @import("./SchedulerInstancePerThread.zig").SchedulerInstancePerThread;
-//
-//probelm: how do we integrate the runtime here, like when the
-//
-//todo: 1st we need to design the schedulerInstanceOnThread, then we need to make the libxev loop in there running
-//
+const SchedulerInstancePerThreadMod = @import("./SchedulerInstancePerThread.zig");
+const SchedulerThreadInstanceArray = @import("./SchedulerThreadInstanceArray.zig").SchedulerThreadInstanceArray;
+
+pub const InitError = AllocOutOfMemErr || std.Thread.SpawnError;
 
 pub const Scheduler = struct {
     // this is the global Scheduler that will be there, now what the fn executing could have is the instance to the
     allocator: std.mem.Allocator,
-    schedulerInstanceOnThread: ?SchedulerInstancePerThread,
     globalRunQueue: queue(*coroutine),
     idleQueue: SchedulerThreadInstanceArray,
     runningQueue: SchedulerThreadInstanceArray,
     schedulerInstanceSleepingLock: std.Thread.Mutex = std.Thread.Mutex{},
     SchedulerInstancesOnThreads: []*SchedulerInstancePerThread,
 
-    const SchedulerThreadInstanceArray = struct {
-        arr: []*SchedulerInstancePerThread,
-        /// this is the current index of opr, like if removing this is the index you remove at and then you decrement it
-        index: u32 = 0,
-        schedulerInstanceSleepingLock: std.Thread.Mutex = std.Thread.Mutex{},
-        full: bool = false,
-        empty: bool = true,
-        const Self = @This();
-
-        pub fn init(allocator: Allocator, cpuCoreCount: u32) !void {
-            return SchedulerThreadInstanceArray{ .arr = try allocator.alloc(*SchedulerInstancePerThread, cpuCoreCount) };
-        }
-
-        pub fn insert(self: *Self, putInIdle: *SchedulerInstancePerThread) void {
-            asserts.assertWithMessageFmtRuntime(self.full == false, "attempted to add to the indleQueue when the array is full", .{putInIdle.SchedulerInstanceId});
-            asserts.assertWithMessageFmtRuntime(self.index < self.arr.len, "out of bounds array access of the idleQueue while adding the schedulerInstanceOnThread:{d}\n", .{putInIdle.SchedulerInstanceId});
-            // const schedulerToPutToSleep: ?*SchedulerInstancePerThread = blk: {
-            //     for (self.arr) |value| {
-            //         if (value.SchedulerInstanceId == putInIdle.SchedulerInstanceId) break :blk value;
-            //     }
-            //     break :blk null;
-            // };
-            // asserts.assertWithMessageFmtRuntime(schedulerToPutToSleep != null, "in registerIdle() we got to put the schedulerInstanceOnThread:{d} to sleep. but it was not in the runningQueue \n", .{putInIdle.SchedulerInstanceId});
-            self.arr[self.index] = putInIdle;
-            self.index += 1;
-            std.debug.assert(self.index > 0);
-            self.empty = false;
-            if (self.index >= self.arr.len) {
-                // as in if we are at 5th or more index after incrementation in arr of len 5 then we are full
-                self.full = true;
-                return;
-            }
-        }
-
-        pub fn callNotifyOnLastOne(self: *Self) void {
-            asserts.assertWithMessageFmtRuntime(self.empty == false, "attempted to remove from the idleQueue when the array is empty", .{});
-            asserts.assertWithMessageFmtRuntime(self.index < self.arr.len, "out of bounds array access as tried to access {d} in array of len {d}\n", .{ self.index, self.arr.len });
-            self.arr[self.index].notify();
-        }
-
-        /// when the [schedulerToRemove] is null then we takes the last element at removes it and give it back
-        pub fn remove(self: *Self, schedulerToRemove: ?*SchedulerInstancePerThread, comptime returnType: type) returnType {
-            std.debug.assert(returnType == *SchedulerInstancePerThread or returnType == void);
-            asserts.assertWithMessageFmtRuntime(self.empty == false, "attempted to remove from the idleQueue when the array is empty", .{});
-            asserts.assertWithMessageFmtRuntime(self.index < self.arr.len, "out of bounds array access as tried to access {d} in array of len {d}\n", .{ self.index, self.arr.len });
-            // Find the scheduler instance in the array
-            const foundIndex: ?u32 = blk: {
-                switch (schedulerToRemove) {
-                    null => {
-                        break :blk self.index;
-                    },
-                    else => {
-                        var i: u32 = 0;
-                        while (i < self.index) : (i += 1) {
-                            if (self.arr[i].SchedulerInstanceId == schedulerToRemove.SchedulerInstanceId) {
-                                break :blk i;
-                            }
-                        }
-                        break :blk null;
-                    },
-                }
-            };
-
-            asserts.assertWithMessageFmtRuntime(foundIndex != null, "schedulerInstanceOnThread:{d} not found in the idleQueue for removal\n", .{schedulerToRemove.SchedulerInstanceId});
-
-            const indexToRemove = foundIndex.?;
-            asserts.assertWithMessageFmtRuntime(indexToRemove < self.index, "found index {d} is out of bounds for current size {d}\n", .{ indexToRemove, self.index });
-
-            const elementAtIndex = self.arr[indexToRemove];
-            // Remove the element at the found index by shifting left
-            // If we're removing from the middle, shift all elements after it to the left
-            var i: u32 = indexToRemove;
-            while (i < self.index - 1) : (i += 1) {
-                self.arr[i] = self.arr[i + 1];
-            }
-
-            // Decrement index after removal operation
-            if (self.index == 0) {
-                self.index = 0;
-                self.empty = true;
-            } else {
-                self.index -= 1;
-            }
-
-            // Update state flags
-            self.full = false;
-
-            asserts.assertWithMessageFmtRuntime(self.index < self.arr.len, "index {d} should be less than array length {d} after removal\n", .{ self.index, self.arr.len });
-            switch (returnType) {
-                void => return,
-                else => return elementAtIndex,
-            }
-        }
-        // / does not call the lock
-        // pub fn pop(self: *Self) ?*SchedulerInstancePerThread {
-        //     // [1] Acquire the lock before checking/modifying
-        //     if (self.index == 0) {
-        //         return null; // Queue is empty
-        //     }
-        //     self.index -= 1;
-        //     self.full = false;
-        //     // The last element before decrementing is at self.index
-        //     return self.arr[self.index];
-        // }
-    };
-
-    pub fn init(allocatorArg: std.mem.Allocator, comptime options: struct { defualtGlobalRunQueueSize: u64 = 650 }) std.mem.Allocator.Error!Scheduler {
-        const defualtCpuAssumption: u32 = 1;
-        const cpuCoreCount: u32 = std.Thread.getCpuCount() catch |err| {
+    pub fn init(allocatorArg: std.mem.Allocator, comptime options: struct { defualtGlobalRunQueueSize: u64 = 650 }) InitError!*Scheduler {
+        const cpuCoreCount = std.Thread.getCpuCount() catch |err| bkl: {
+            const defualtCpuAssumption: u32 = 1;
             std.debug.print("\n\n[WARN] error in gettting the no of cpus:{s} instead defaulting to {d}\n\n", .{ @errorName(err), defualtCpuAssumption });
-        } orelse defualtCpuAssumption;
-        // const cpuCoreCount: u32 = std.Thread.getCpuCount() catch |err| bkl: {
-        //     const defualtCpuAssumption: u32 = 1;
-        //     std.debug.print("\n\n[WARN] error in gettting the no of cpus:{s} instead defaulting to {d}\n\n", .{ @errorName(err), defualtCpuAssumption });
-        //     break :bkl defualtCpuAssumption;
-        // };
-        return Scheduler{
-            .allocator = allocatorArg,
-            .schedulerInstanceOnThread = null,
-            .globalRunQueue = try queue(*coroutine).init(allocatorArg, .{ .listSize = options.defualtGlobalRunQueueSize }),
-            .idleQueue = try SchedulerThreadInstanceArray.init(allocatorArg, cpuCoreCount),
-            .runningQueue = try SchedulerThreadInstanceArray.init(allocatorArg, cpuCoreCount),
-            .schedulerInstanceSleepingLock = std.Thread.Mutex{},
+            break :bkl defualtCpuAssumption;
         };
+        std.debug.print("== in the init and the selfRef is {?}\n", .{SchedulerInstancePerThreadMod.getSelfRef()});
+        std.debug.print("== in the init and the selfRef is {?}\n", .{SchedulerInstancePerThreadMod.getSelfRef()});
+        std.debug.print("1\n", .{});
+        const coreCount: u32 = @intCast(cpuCoreCount);
+        var scheduler = try allocatorArg.create(Scheduler);
+        scheduler.* = Scheduler{
+            .allocator = allocatorArg,
+            .globalRunQueue = try queue(*coroutine).init(allocatorArg, .{ .listSize = options.defualtGlobalRunQueueSize }),
+            .idleQueue = try SchedulerThreadInstanceArray.init(allocatorArg, coreCount),
+            .runningQueue = try SchedulerThreadInstanceArray.init(allocatorArg, coreCount),
+            .schedulerInstanceSleepingLock = std.Thread.Mutex{},
+            .SchedulerInstancesOnThreads = try allocatorArg.alloc(*SchedulerInstancePerThread, cpuCoreCount),
+        };
+        std.debug.print("2\n", .{});
+        //
+        //
+        //maybe we shoule have the mutex lock in that array too, or may be we should first create/alloc them and then run them in the loop, 2 loop
+        //
+        //
+        for (0..cpuCoreCount) |value| {
+            var schedulerInstance = try allocatorArg.create(SchedulerInstancePerThread);
+            schedulerInstance.* = try SchedulerInstancePerThread.init(allocatorArg, scheduler, @intCast(value));
+            schedulerInstance.SchedulerInstanceId = @intCast(value);
+            // add it to the scheduler's queue
+            scheduler.runningQueue.arr[value] = schedulerInstance;
+            scheduler.SchedulerInstancesOnThreads[value] = schedulerInstance;
+        }
+
+        for (0..cpuCoreCount) |i| {
+            const thread = try std.Thread.spawn(.{}, SchedulerInstancePerThread.run, .{scheduler.SchedulerInstancesOnThreads[i]});
+            thread.detach();
+        }
+        std.debug.print("3\n", .{});
+        return scheduler;
     }
 
     /// impl it
@@ -181,21 +95,27 @@ pub const Scheduler = struct {
         /// if there are 2 same types of the param then you need to provide their type 2 times as we will only skip for one type in the array once
         typeToSkipInChecking: ?[]const type = &[_]type{*coroutine},
         skipTypeChecking: bool = false,
-    }) allocOutOfMem!void {
-
+    }) AllocOutOfMemErr!void {
         // this fn will take in a fn and convert it into a coroutine and store it somewhere(global run queue etc)
         // ok here is a quick and dirty version of the scheduler just take in the struct that has the fn and atis args as a array and then convert them into coro
         // and start executing them, if one of them yield then I want you to take the next one and start executing it  until the state is finnished
-        //
-        // just hardcode some fn here and make them start
         if (options.skipTypeChecking == false) {
             const typeIsCorrect = comptime util.validateArgsMatchFunction(Fn, fnArgs, options.typeToSkipInChecking);
             if (!typeIsCorrect) @compileError("there is a type mismatch between the fn and the parameter type in the args provided");
         }
         const coro = coroutine.init(Fn, fnArgs, self.allocator, .{}) catch |err| switch (err) {
-            coroutine.err.OutOfMemory => return allocOutOfMem.OutOfMemory,
+            coroutine.err.OutOfMemory => return AllocOutOfMemErr.OutOfMemory,
             coroutine.err.StackTooSmall => @panic("the stack size of coroutine for the fn is small\n"),
         };
+        //
+        //
+        //
+        // here is a optimization, before putting it in the global run queue, lock and see if there is still a SchedulerInstancePerThread in idle queue if there is then put it
+        // there and notify it,
+        // if no one is there then take the cost and put it in the global run queue
+        //
+        //
+        //
         try self.globalRunQueue.put(coro);
         self.schedulerInstanceSleepingLock.lock();
         defer self.schedulerInstanceSleepingLock.unlock();

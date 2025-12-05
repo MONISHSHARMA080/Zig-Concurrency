@@ -78,7 +78,6 @@ pub const Coroutine = struct {
                 _ = @call(.auto, user_func, new_args);
             }
         };
-
         resultCoro.* = Coroutine{
             .stack_pointer = register_space.ptr,
             .caller_fn = Caller.call,
@@ -86,9 +85,7 @@ pub const Coroutine = struct {
             .allocator = allocator,
             .coroutineState = .NotRunning,
             .targetCoroutineToYieldTo = null,
-            // .args_storage = undefined,
         };
-
         const args_bytes = std.mem.asBytes(&args);
         @memcpy(resultCoro.args_storage[0..args_bytes.len], args_bytes);
 

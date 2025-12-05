@@ -83,33 +83,30 @@ pub fn ThreadSafeQueue(T: type) type {
             return;
         }
 
-        pub fn popNTimesOrLess(self: *Self, comptime option: struct { numberOfCoroToGet: u32 = 10, arrayToReturn: ?[]T = null }) ?[]T {
-            switch (option.arrayToReturn) {
-                null => {
-                    var arrayToReturn: [option.numberOfCoroToGet]T = undefined;
-                    for (0..option.numberOfCoroToGet) |i| {
-                        if (self.pop()) |val| {
-                            assert(i < arrayToReturn.len);
-                            arrayToReturn[i] = val;
-                        } else {
-                            if (i == 0) return null;
-                            return arrayToReturn[0..i];
-                        }
+        pub fn popNTimesOrLess(self: *Self, comptime option: struct { comptime numberOfCoroToGet: u32 = 10, arrayToReturn: ?[]T = null }) ?[]T {
+            if (option.arrayToReturn) |arrayToReturn| {
+                for (0..option.numberOfCoroToGet) |i| {
+                    if (self.pop()) |val| {
+                        assert(i < arrayToReturn.len);
+                        arrayToReturn[i] = val;
+                    } else {
+                        if (i == 0) return null;
+                        return arrayToReturn[0..i];
                     }
-                    return arrayToReturn;
-                },
-                else => {
-                    for (0..option.numberOfCoroToGet) |i| {
-                        if (self.pop()) |val| {
-                            assert(i < option.arrayToReturn.?.len);
-                            option.arrayToReturn[i] = val;
-                        } else {
-                            if (i == 0) return null;
-                            return option.arrayToReturn[0..i];
-                        }
+                }
+                return arrayToReturn;
+            } else {
+                var arrayToReturn: [option.numberOfCoroToGet]T = undefined;
+                for (0..option.numberOfCoroToGet) |i| {
+                    if (self.pop()) |val| {
+                        assert(i < arrayToReturn.len);
+                        arrayToReturn[i] = val;
+                    } else {
+                        if (i == 0) return null;
+                        return arrayToReturn[0..i];
                     }
-                    return option.arrayToReturn.?;
-                },
+                }
+                return arrayToReturn[0..];
             }
         }
 
@@ -157,7 +154,7 @@ pub fn ThreadSafeQueue(T: type) type {
                         if (self.queueStart.nodePtr.nodeId == self.queueStart.nodePtr.nodeId) { // same nodes
                             // check if we have no items left to pop
                             if (self.queueStart.nodePtr.indexFilled == self.queueEnd.itemIndex and self.queueStart.itemIndex == self.queueEnd.nodePtr.indexFilled) {
-                                std.debug.print("we have reached the cond where the pop can't remove element as the put has not written ahead in this node \n", .{});
+                                // std.debug.print("we have reached the cond where the pop can't remove element as the put has not written ahead in this node \n", .{});
                                 // break :val null;
                                 return null; // as no more incrementation
                             } else break :val self.queueStart.nodePtr.list[self.queueStart.itemIndex];
@@ -231,7 +228,7 @@ pub fn ThreadSafeQueue(T: type) type {
                     break :node startNode;
                 } else {
                     // through the alloc
-                    const allocatedNode = allocateNewNode(.{ .allocator = self.allocator }) catch return null;
+                    const allocatedNode = allocateNewNode(.{ .self = self }) catch return null;
                     allocatedNode.nextListPtr = null;
                     allocatedNode.indexFilled = 0;
                     const currentNodeId = self.nodeNumber.fetchAdd(1, .monotonic);
@@ -316,7 +313,7 @@ pub fn ThreadSafeQueue(T: type) type {
             listSize: u64 = 180,
         }) std.mem.Allocator.Error!Self {
             assertWithMessage(config.listSize > 0, "the listSize should be greater than 0\n");
-            var node: *Node = try allocateNewNode(.{ .allocator = allocator2 });
+            var node: *Node = try allocateNewNode(.{ .new = .{ .allocator = allocator2, .listSize = config.listSize } });
 
             var self = Self{
                 .listSize = config.listSize,
