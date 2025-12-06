@@ -15,7 +15,6 @@ const SchedulerInstancePerThreadLib = @import("./SchedulerInstancePerThread.zig"
 const SchedulerInstancePerThreadMod = @import("./SchedulerInstancePerThread.zig");
 const SchedulerThreadInstanceArray = @import("./SchedulerThreadInstanceArray.zig").SchedulerThreadInstanceArray;
 
-// const coroutine = @import("ZigConcurrency").Coroutine;
 pub const InitError = AllocOutOfMemErr || std.Thread.SpawnError;
 
 pub const Scheduler = struct {

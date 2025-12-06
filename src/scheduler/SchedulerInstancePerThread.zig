@@ -132,7 +132,9 @@ pub const SchedulerInstancePerThread = struct {
             //[3rd] check the global run queue, is coro then run it
             //[4th] try work stealing
             //[5th] if both are not there and also not one waiting in the waitingQueue then wait on a futex or conditional var
-            libxev.Context.init(self.allocator);
+            var loop: libxev.Loop = try libxev.Loop.init(.{});
+            defer loop.deinit();
+            try loop.run(.once);
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;
