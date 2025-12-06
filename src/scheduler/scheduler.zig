@@ -30,9 +30,6 @@ pub const Scheduler = struct {
             std.debug.print("\n\n[WARN] error in gettting the no of cpus:{s} instead defaulting to {d}\n\n", .{ @errorName(err), defualtCpuAssumption });
             break :bkl defualtCpuAssumption;
         };
-        std.debug.print("== in the init and the selfRef is {?}\n", .{SchedulerInstancePerThreadMod.getSelfRef()});
-        std.debug.print("== in the init and the selfRef is {?}\n", .{SchedulerInstancePerThreadMod.getSelfRef()});
-        std.debug.print("1\n", .{});
         const coreCount: u32 = @intCast(cpuCoreCount);
         var scheduler = try allocatorArg.create(Scheduler);
         scheduler.* = Scheduler{
@@ -43,12 +40,6 @@ pub const Scheduler = struct {
             .schedulerInstanceSleepingLock = std.Thread.Mutex{},
             .SchedulerInstancesOnThreads = try allocatorArg.alloc(*SchedulerInstancePerThread, cpuCoreCount),
         };
-        std.debug.print("2\n", .{});
-        //
-        //
-        //maybe we shoule have the mutex lock in that array too, or may be we should first create/alloc them and then run them in the loop, 2 loop
-        //
-        //
         for (0..cpuCoreCount) |value| {
             var schedulerInstance = try allocatorArg.create(SchedulerInstancePerThread);
             schedulerInstance.* = try SchedulerInstancePerThread.init(allocatorArg, scheduler, @intCast(value));

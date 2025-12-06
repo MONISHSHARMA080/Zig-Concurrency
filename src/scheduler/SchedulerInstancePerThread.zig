@@ -10,7 +10,10 @@ const allocOutOfMem = Allocator.Error;
 const asserts = @import("../utils/assert.zig");
 const assertWithMessage = asserts.assertWithMessage;
 
-pub threadlocal var SelfRef: ?*SchedulerInstancePerThread = null;
+pub threadlocal var SelfRef: union(enum) {
+    schedulerInstancePerThread: ?*SchedulerInstancePerThread,
+    scheduler: *Scheduler,
+} = .{ .schedulerInstancePerThread = null };
 
 pub fn getSelfRef() ?*SchedulerInstancePerThread {
     return SelfRef;
@@ -90,7 +93,6 @@ pub const SchedulerInstancePerThread = struct {
             }
             // std.debug.print("in SchedulerInstance:{d} we are putting it on wait(futex)\n", .{self.SchedulerInstanceId});
         }
-        // std.debug.print("=={{{}}}==\n", .{});
         // [D] Sleep Phase: No work after spinning. Commit to kernel wait.
         // We pass the 'ticket' grabbed at [B].
         // If self.futex is STILL 'ticket', the OS puts us to sleep.
