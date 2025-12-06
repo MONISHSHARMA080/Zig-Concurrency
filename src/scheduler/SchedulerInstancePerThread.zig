@@ -1,5 +1,4 @@
 const std = @import("std");
-// const coroutine = @import("ZigConcurrency").Coroutine;
 const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
 const util = @import("../utils/typeChecking.zig");
 const queue = @import("../utils/queue.zig").ThreadSafeQueue;
@@ -9,18 +8,33 @@ const Allocator = std.mem.Allocator;
 const allocOutOfMem = Allocator.Error;
 const asserts = @import("../utils/assert.zig");
 const assertWithMessage = asserts.assertWithMessage;
+const assert = std.debug.assert;
 
-pub threadlocal var SelfRef: union(enum) {
+pub const ReferenceToScheduler = union(enum) {
     schedulerInstancePerThread: ?*SchedulerInstancePerThread,
-    scheduler: *Scheduler,
-} = .{ .schedulerInstancePerThread = null };
+    scheduler: ?*Scheduler,
+};
+pub threadlocal var SelfRef: ReferenceToScheduler = .{ .schedulerInstancePerThread = null };
 
-pub fn getSelfRef() ?*SchedulerInstancePerThread {
-    return SelfRef;
+pub fn isRefToSchedulerValid(refToScheduler: *ReferenceToScheduler, returnType: type) returnType {
+    asserts.assertWithMessageFmtCompileTime(returnType == bool or returnType == void, "only bool or void as return types are allowed\n", .{});
+    switch (returnType) {
+        bool => if (refToScheduler.scheduler != null or refToScheduler.schedulerInstancePerThread != null) return true else return false,
+        void => if (refToScheduler.scheduler != null or refToScheduler.schedulerInstancePerThread != null) return else @panic("only bool or void as return types are allowed\n"),
+        else => unreachable,
+    }
+}
+pub fn getSelfRef() *ReferenceToScheduler {
+    isRefToSchedulerValid(&SelfRef, void);
+    return &SelfRef;
 }
 
-pub fn setSelfRef(ref: ?*SchedulerInstancePerThread) void {
-    SelfRef = ref;
+pub fn setSelfRef(ref: ReferenceToScheduler) void {
+    switch (ref) {
+        .schedulerInstancePerThread => |val| SelfRef.schedulerInstancePerThread = val,
+        .scheduler => |val| SelfRef.scheduler = val,
+    }
+    isRefToSchedulerValid(&SelfRef, void);
 }
 
 pub const SchedulerInstancePerThread = struct {
@@ -111,13 +125,14 @@ pub const SchedulerInstancePerThread = struct {
             .stack_pointer = undefined,
             .allocator = undefined,
         };
-        SelfRef = self;
+        SelfRef = .{ .schedulerInstancePerThread = self };
         while (true) {
             //[1st] check is the sys calls are completed,using libxev and make coro as runnable : Not implemented
             //[2nd] check the local run queue, is coro then run it
             //[3rd] check the global run queue, is coro then run it
             //[4th] try work stealing
             //[5th] if both are not there and also not one waiting in the waitingQueue then wait on a futex or conditional var
+            libxev.Context.init(self.allocator);
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;

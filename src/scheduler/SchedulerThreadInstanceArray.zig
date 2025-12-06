@@ -1,6 +1,6 @@
 const std = @import("std");
 // const coroutine = @import("ZigConcurrency").Coroutine;
-const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
+const Coroutine = @import("../coroutine/coroutine.zig").Coroutine;
 const util = @import("../utils/typeChecking.zig");
 const queue = @import("../utils/queue.zig").ThreadSafeQueue;
 const libxev = @import("xev");
@@ -15,7 +15,7 @@ pub const SchedulerThreadInstanceArray = struct {
     arr: []*SchedulerInstancePerThread,
     /// this is the current index of opr, like if removing this is the index you remove at and then you decrement it
     index: u32 = 0,
-    schedulerInstanceSleepingLock: std.Thread.Mutex = std.Thread.Mutex{},
+    // schedulerInstanceSleepingLock: std.Thread.Mutex = std.Thread.Mutex{},
     full: bool = false,
     empty: bool = true,
     const Self = @This();
@@ -36,6 +36,22 @@ pub const SchedulerThreadInstanceArray = struct {
             self.full = true;
             return;
         }
+    }
+
+    /// iterates from the last one to first index; returns false if the array is empty or can't put it in any of the coro in the array
+    /// note: it is callers responsiblity to call mutex lock
+    pub fn putCoroInany(self: *Self, coro: *Coroutine, config: struct { alsoWakeItUp: bool = false }) bool {
+        assertWithMessageFmtRuntime(self.index < self.arr.len, "out of bounds array access as tried to access {d} in array of len {d}\n", .{ self.index, self.arr.len });
+        if (self.empty == true) return false;
+        var i = self.index;
+        while (i != 0) : (i -= 1) {
+            self.arr[i].readyQueue.put(coro) catch continue;
+            if (config.alsoWakeItUp) {
+                self.arr[i].notify();
+            }
+            return true;
+        }
+        return false;
     }
 
     pub fn callNotifyOnLastOne(self: *Self) void {

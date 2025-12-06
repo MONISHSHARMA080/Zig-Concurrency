@@ -1,18 +1,21 @@
 const std = @import("std");
-// const coroutine = @import("ZigConcurrency").Coroutine;
-const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
-const util = @import("../utils/typeChecking.zig");
-const queue = @import("../utils/queue.zig").ThreadSafeQueue;
-const libxev = @import("xev");
 const Allocator = std.mem.Allocator;
 const AllocOutOfMemErr = Allocator.Error;
+
+const libxev = @import("xev");
+
+const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
 const asserts = @import("../utils/assert.zig");
 const assertWithMessage = asserts.assertWithMessageFmt;
 const assertWithRuntimeMessage = asserts.assertWithMessageFmtRuntime;
+const queue = @import("../utils/queue.zig").ThreadSafeQueue;
+const util = @import("../utils/typeChecking.zig");
 const SchedulerInstancePerThread = @import("./SchedulerInstancePerThread.zig").SchedulerInstancePerThread;
+const SchedulerInstancePerThreadLib = @import("./SchedulerInstancePerThread.zig");
 const SchedulerInstancePerThreadMod = @import("./SchedulerInstancePerThread.zig");
 const SchedulerThreadInstanceArray = @import("./SchedulerThreadInstanceArray.zig").SchedulerThreadInstanceArray;
 
+// const coroutine = @import("ZigConcurrency").Coroutine;
 pub const InitError = AllocOutOfMemErr || std.Thread.SpawnError;
 
 pub const Scheduler = struct {
@@ -54,6 +57,8 @@ pub const Scheduler = struct {
             thread.detach();
         }
         std.debug.print("3\n", .{});
+
+        SchedulerInstancePerThreadLib.setSelfRef(.{ .scheduler = scheduler });
         return scheduler;
     }
 
@@ -98,19 +103,14 @@ pub const Scheduler = struct {
             coroutine.err.OutOfMemory => return AllocOutOfMemErr.OutOfMemory,
             coroutine.err.StackTooSmall => @panic("the stack size of coroutine for the fn is small\n"),
         };
-        //
-        //
-        //
-        // here is a optimization, before putting it in the global run queue, lock and see if there is still a SchedulerInstancePerThread in idle queue if there is then put it
-        // there and notify it,
-        // if no one is there then take the cost and put it in the global run queue
-        //
-        //
-        //
-        try self.globalRunQueue.put(coro);
+        errdefer coro.destroy();
         self.schedulerInstanceSleepingLock.lock();
         defer self.schedulerInstanceSleepingLock.unlock();
+        // we try to put it in the schedulerInstance's runQueue if err then global runQueue if still no luck the return
+        if (self.runningQueue.putCoroInany(coro, .{})) return;
         if (self.idleQueue.index == 0) return;
+        if (self.idleQueue.putCoroInany(coro, .{ .alsoWakeItUp = true })) return;
+        try self.globalRunQueue.put(coro);
         self.idleQueue.callNotifyOnLastOne();
         return;
     }

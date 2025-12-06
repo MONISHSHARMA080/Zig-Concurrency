@@ -33,6 +33,7 @@ pub const Coroutine = struct {
 
     caller_fn: ?*const fn (*anyopaque, *Coroutine) void = null, // Added *CoroutineBase param
     args_storage: [256]u8 align(8) = undefined,
+    coroFnName: [:0]const u8 = "",
 
     allocator: std.mem.Allocator,
 
@@ -56,7 +57,9 @@ pub const Coroutine = struct {
         const coro_size = @sizeOf(Coroutine);
         const total_size = coro_size + config.defaultStackSize;
 
-        // Single allocation - dead simple
+        const fn_name = @typeName(@TypeOf(user_func));
+        const name_array: [:0]const u8 = comptime fn_name;
+
         const memory = try allocator.alloc(u8, total_size);
         errdefer allocator.free(memory);
 
@@ -78,6 +81,9 @@ pub const Coroutine = struct {
                 _ = @call(.auto, user_func, new_args);
             }
         };
+        // const fn_name = @typeName(@TypeOf(user_func));
+        // const max_name_len = @sizeOf(@TypeOf(resultCoro.coroFnName));
+        // const copy_len = @min(fn_name.len, max_name_len - 1); // -1 for null terminator
         resultCoro.* = Coroutine{
             .stack_pointer = register_space.ptr,
             .caller_fn = Caller.call,
@@ -85,7 +91,15 @@ pub const Coroutine = struct {
             .allocator = allocator,
             .coroutineState = .NotRunning,
             .targetCoroutineToYieldTo = null,
+            .coroFnName = name_array,
         };
+
+        // Copy the name (truncated if necessary) and null-terminate
+        // @memcpy(resultCoro.coroFnName[0..copy_len], fn_name[0..copy_len]);
+        // resultCoro.coroFnName[copy_len] = 0; // Null terminator
+        // Zero out the rest for cleanliness (optional)
+        // @memset(resultCoro.coroFnName[copy_len + 1 ..], 0);
+
         const args_bytes = std.mem.asBytes(&args);
         @memcpy(resultCoro.args_storage[0..args_bytes.len], args_bytes);
 
