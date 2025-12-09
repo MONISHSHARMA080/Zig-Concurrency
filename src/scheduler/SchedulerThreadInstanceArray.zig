@@ -143,6 +143,21 @@ pub const SchedulerThreadInstanceArray = struct {
         const elementAtIndex = self.arr[indexToRemove];
         // Remove the element at the found index by shifting left
         // If we're removing from the middle, shift all elements after it to the left
+
+        var printer = @import("../utils/print.zig").KeepPrinting().init();
+        printer.print("was going to remove the schedulerInstanceId:{d} and the whole list is \n", .{elementAtIndex.?.SchedulerInstanceId});
+        for (self.arr, 0..) |value, i| {
+            if (value) |a| {
+                printer.print("{d} at index:{d} ->", .{ a.SchedulerInstanceId, i });
+            } else {
+                printer.print("null at index:{d} ->", .{i});
+            }
+
+            // printer.print("{any} at index:{d} ->", .{ if (value != null) @as(*const [:0]u8, value.?.SchedulerInstanceId) else "null", i });
+        }
+        std.debug.print("\n", .{});
+        printer.destroy();
+
         self.arr[indexToRemove] = null;
         // var i: i32 = @intCast(indexToRemove);
         // while (i >= 0) : (i += 1) {
