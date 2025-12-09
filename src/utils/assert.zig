@@ -8,8 +8,9 @@ pub fn assertWithMessageFmt(condition: bool, comptime message: []const u8, compt
 }
 pub fn assertWithMessageFmtRuntime(condition: bool, comptime message: []const u8, args: anytype) void {
     if (!condition) {
-        std.debug.print(message, args);
-        @panic("");
+        // std.debug.print(message, args);
+        std.debug.panic(message, args);
+        // @panic("");
     }
 }
 

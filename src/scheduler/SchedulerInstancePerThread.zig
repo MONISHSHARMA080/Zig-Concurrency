@@ -19,21 +19,29 @@ pub threadlocal var SelfRef: ReferenceToScheduler = .{ .schedulerInstancePerThre
 pub fn isRefToSchedulerValid(refToScheduler: *ReferenceToScheduler, returnType: type) returnType {
     asserts.assertWithMessageFmtCompileTime(returnType == bool or returnType == void, "only bool or void as return types are allowed\n", .{});
     switch (returnType) {
-        bool => if (refToScheduler.scheduler != null or refToScheduler.schedulerInstancePerThread != null) return true else return false,
-        void => if (refToScheduler.scheduler != null or refToScheduler.schedulerInstancePerThread != null) return else @panic("only bool or void as return types are allowed\n"),
+        bool => {
+            switch (refToScheduler.*) {
+                .scheduler => |sch| if (sch == null) return false else return true,
+                .schedulerInstancePerThread => |sch| if (sch == null) return false else return true,
+            }
+        },
+        void => {
+            // if (refToScheduler.scheduler != null or refToScheduler.schedulerInstancePerThread != null) return else @panic("only bool or void as return types are allowed\n");
+            switch (refToScheduler.*) {
+                .scheduler => |sch| if (sch == null) @panic(" the active field on the SelfRef, thread local var is null \n") else return,
+                .schedulerInstancePerThread => |sch| if (sch == null) @panic(" the active field on the SelfRef, thread local var is null \n") else return,
+            }
+        },
         else => unreachable,
     }
 }
 pub fn getSelfRef() *ReferenceToScheduler {
-    isRefToSchedulerValid(&SelfRef, void);
     return &SelfRef;
 }
 
 pub fn setSelfRef(ref: ReferenceToScheduler) void {
-    switch (ref) {
-        .schedulerInstancePerThread => |val| SelfRef.schedulerInstancePerThread = val,
-        .scheduler => |val| SelfRef.scheduler = val,
-    }
+    const selfRef = getSelfRef();
+    selfRef.* = ref;
     isRefToSchedulerValid(&SelfRef, void);
 }
 
@@ -98,8 +106,9 @@ pub const SchedulerInstancePerThread = struct {
         // Double-check for work after setting futex
         // (prevents race condition where work arrives between check and wait)
         std.debug.print("in SchedulerInstance:{d} we are park() and trying to spin it one last time and park it \n", .{self.SchedulerInstanceId});
-        for (0..SpinLimit) |i| {
-            _ = i;
+        for (0..12) |i| {
+            // _ = i;
+            std.debug.print("in SchedulerInstance:{d} and at index {d} \n", .{ self.SchedulerInstanceId, i });
             std.atomic.spinLoopHint();
             if (self.getWorkOrNull()) |coro| {
                 std.debug.print("in SchedulerInstance:{d} we are putting it on wait(futex)\n", .{self.SchedulerInstanceId});

@@ -41,6 +41,7 @@ pub fn main() !void {
         }
     }
     std.debug.print("State: {}\n", .{coro.coroutineState}); // .Finished
+    std.Thread.sleep(std.time.ns_per_s * 5);
 }
 
 fn calling() !void {

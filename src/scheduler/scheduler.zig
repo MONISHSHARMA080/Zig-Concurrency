@@ -33,6 +33,7 @@ pub const Scheduler = struct {
             break :bkl defualtCpuAssumption;
         };
         const coreCount: u32 = @intCast(cpuCoreCount);
+        std.debug.print("cpu core count is {d}\n", .{coreCount});
         var scheduler = try allocatorArg.create(Scheduler);
         scheduler.* = Scheduler{
             .allocator = allocatorArg,
@@ -43,11 +44,11 @@ pub const Scheduler = struct {
             .SchedulerInstancesOnThreads = try allocatorArg.alloc(*SchedulerInstancePerThread, cpuCoreCount),
         };
         for (0..cpuCoreCount) |value| {
+            std.debug.print("in the adding schedulerToRunningQueue in scheduler.init, and at index:{d} and runningQueue.len is {d} and size(len-1):{d}  \n", .{ value, scheduler.runningQueue.arr.len, scheduler.runningQueue.arr.len - 1 });
             var schedulerInstance = try allocatorArg.create(SchedulerInstancePerThread);
             schedulerInstance.* = try SchedulerInstancePerThread.init(allocatorArg, scheduler, @intCast(value));
             schedulerInstance.SchedulerInstanceId = @intCast(value);
-            // add it to the scheduler's queue
-            scheduler.runningQueue.arr[value] = schedulerInstance;
+            scheduler.runningQueue.insert(schedulerInstance);
             scheduler.SchedulerInstancesOnThreads[value] = schedulerInstance;
         }
 
