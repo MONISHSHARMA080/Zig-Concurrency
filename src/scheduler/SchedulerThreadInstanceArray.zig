@@ -89,14 +89,14 @@ pub const SchedulerThreadInstanceArray = struct {
             if (schedulerToRemove) |schedulerInsToRemove| {
                 while (ia < self.arr.len) : (ia += 1) {
                     if (self.arr[ia]) |schedulerIns| {
-                        std.debug.print("=== schedulerInstanceOnThread:{d} at index:{d} \n", .{ schedulerInsToRemove.SchedulerInstanceId, ia });
+                        // std.debug.print("=== schedulerInstanceOnThread:{d} at index:{d} \n", .{ schedulerInsToRemove.SchedulerInstanceId, ia });
                         if (schedulerIns.SchedulerInstanceId == schedulerInsToRemove.SchedulerInstanceId) {
                             std.debug.print(" schedulerInstanceOnThread:{d} self.arr[{d}].SchedulerInstanceId:{d} == scheduler.SchedulerInstanceId:{d} we got \n", .{ schedulerInsToRemove.SchedulerInstanceId, ia, schedulerIns.SchedulerInstanceId, schedulerInsToRemove.SchedulerInstanceId });
                             break :blk ia;
                         } else continue;
                     } else continue;
                 }
-                std.debug.print("=== schedulerInstanceOnThread:{d} at index:{d} and arr len is {d} and size:{d} and bout to retunr null \n", .{ schedulerInsToRemove.SchedulerInstanceId, ia, self.arr.len, self.arr.len - 1 });
+                // std.debug.print("=== schedulerInstanceOnThread:{d} at index:{d} and arr len is {d} and size:{d} and bout to retunr null \n", .{ schedulerInsToRemove.SchedulerInstanceId, ia, self.arr.len, self.arr.len - 1 });
                 break :blk null;
             } else {
                 const a: u32 = @intCast(self.arr.len);
@@ -112,27 +112,6 @@ pub const SchedulerThreadInstanceArray = struct {
         // maybe search the whole array in remove or make it []*?SchedulerInstancePerThread and when it is not there then make it null
 
         if (schedulerToRemove) |sch| {
-            // for testing only remove it
-            // const printer = @import("../utils/print.zig").KeepPrinting();
-            // // const buffer: [64 * 32]u8 = undefined;
-            // // const lockStderrWriter = std.debug.lockStderrWriter;
-            // // const unlockStderrWriter = std.debug.unlockStderrWriter;
-            // var print = printer.init();
-            // defer print.destroy(); // Now passing the instance
-            // // defer printer.destroy();
-            // if (foundIndex == null) {
-            //     print.print("[+1] schedulerInstanceOnThread:{d} self.arr[{d}].SchedulerInstanceId:{d} == scheduler.SchedulerInstanceId:{d} we got \n", .{ sch.SchedulerInstanceId, ia + 1, self.arr[ia + 1].SchedulerInstanceId, sch.SchedulerInstanceId });
-            //
-            //     // std.debug.print("[+1] schedulerInstanceOnThread:{d} self.arr[{d}].SchedulerInstanceId:{d} == scheduler.SchedulerInstanceId:{d} we got \n", .{ sch.SchedulerInstanceId, ia + 1, self.arr[ia + 1].SchedulerInstanceId, sch.SchedulerInstanceId });
-            //     ia = 0;
-            //     while (ia < self.arr.len) : (ia += 1) {
-            //         print.print("(...) schedulerInstanceOnThread:{d} at index:{d} we have schedulerInstanceOnThreadID:{d} \n", .{ sch.SchedulerInstanceId, ia, self.arr[ia].SchedulerInstanceId });
-            //         if (self.arr[ia].SchedulerInstanceId == sch.SchedulerInstanceId) {
-            //             print.print(" schedulerInstanceOnThread:{d} self.arr[{d}].SchedulerInstanceId:{d} == scheduler.SchedulerInstanceId:{d} we got \n", .{ sch.SchedulerInstanceId, ia, self.arr[ia].SchedulerInstanceId, sch.SchedulerInstanceId });
-            //         } else continue;
-            //     }
-            //     print.print("------\n", .{});
-            // }
             assertWithMessageFmtRuntime(foundIndex != null, "schedulerInstanceOnThread:{d} not found in the idleQueue for removal\n", .{sch.SchedulerInstanceId});
         } else {
             assertWithMessageFmtRuntime(foundIndex != null, "in remove() we are not able to find foundIndex at remove as it is null, the schedulerToRemove is also null\n", .{});
@@ -141,41 +120,14 @@ pub const SchedulerThreadInstanceArray = struct {
         const schedulerInstanceId: i32 = if (schedulerToRemove == null) -1 else @intCast(schedulerToRemove.?.SchedulerInstanceId);
         assertWithMessageFmtRuntime(indexToRemove < self.arr.len, " schedulerInstanceOnThread:{d} found index {d} is out of bounds for current size {d}\n", .{ schedulerInstanceId, indexToRemove, self.index });
         const elementAtIndex = self.arr[indexToRemove];
-        // Remove the element at the found index by shifting left
-        // If we're removing from the middle, shift all elements after it to the left
-
-        var printer = @import("../utils/print.zig").KeepPrinting().init();
-        printer.print("was going to remove the schedulerInstanceId:{d} and the whole list is \n", .{elementAtIndex.?.SchedulerInstanceId});
-        for (self.arr, 0..) |value, i| {
-            if (value) |a| {
-                printer.print("{d} at index:{d} ->", .{ a.SchedulerInstanceId, i });
-            } else {
-                printer.print("null at index:{d} ->", .{i});
-            }
-
-            // printer.print("{any} at index:{d} ->", .{ if (value != null) @as(*const [:0]u8, value.?.SchedulerInstanceId) else "null", i });
-        }
-        std.debug.print("\n", .{});
-        printer.destroy();
-
         self.arr[indexToRemove] = null;
-        // var i: i32 = @intCast(indexToRemove);
-        // while (i >= 0) : (i += 1) {
-        //     const index: usize = @intCast(i);
-        //     self.arr[index] = self.arr[index + 1];
-        // }
-
-        // Decrement index after removal operation
         if (self.index == 0) {
             self.index = 0;
             self.empty = true;
         } else {
             self.index -= 1;
         }
-
-        // Update state flags
         self.full = false;
-
         assertWithMessageFmtRuntime(self.index < self.arr.len, "index {d} should be less than array length {d} after removal\n", .{ self.index, self.arr.len });
         switch (returnType) {
             void => return,
