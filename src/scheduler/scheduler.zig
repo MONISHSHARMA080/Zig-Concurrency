@@ -115,35 +115,3 @@ pub const Scheduler = struct {
         return;
     }
 };
-
-// var coro1 = coroutine.init(&one, .{self}, self.allocator, .{}) catch unreachable;
-// var coro2 = coroutine.init(&two, .{self}, self.allocator, .{}) catch unreachable;
-// defer coro1.destroy();
-// defer coro2.destroy();
-// var main_coro: coroutine = .{
-//     .stack = &[_]u8{},
-//     .stack_pointer = undefined,
-//     .allocator = undefined,
-// };
-// std.debug.print("in the scheduler's go fn\n", .{});
-// coro1.targetCoroutineToYieldTo = &main_coro;
-// coro2.targetCoroutineToYieldTo = &main_coro;
-//
-// while (coro1.coroutineState != .Finished or coro2.coroutineState != .Finished) {
-//     // Run coro1 if not finished
-//     if (coro1.coroutineState != .Finished) {
-//         std.debug.print("[Scheduler loop] starting coro1\n", .{});
-//         // coro1.startFrom(&main_coro);
-//         coro1.startRunning();
-//         std.debug.print("[Scheduler loop] coro1 has yielded\n", .{});
-//     }
-//
-//     // Run coro2 if not finished
-//     if (coro2.coroutineState != .Finished) {
-//         std.debug.print("[Scheduler loop] starting coro2\n", .{});
-//         coro2.startRunning();
-//         std.debug.print("[Scheduler loop] coro2 has yielded\n", .{});
-//     }
-// }
-//
-// std.debug.print("[Scheduler] Both coroutines finished!\n", .{});

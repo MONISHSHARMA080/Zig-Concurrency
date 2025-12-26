@@ -141,9 +141,9 @@ pub const SchedulerInstancePerThread = struct {
             //[3rd] check the global run queue, is coro then run it
             //[4th] try work stealing
             //[5th] if both are not there and also not one waiting in the waitingQueue then wait on a futex or conditional var
-            var loop: libxev.Loop = try libxev.Loop.init(.{});
+            var loop = try libxev.Loop.init(.{});
             defer loop.deinit();
-            try loop.run(.once);
+            try loop.run(libxev.RunMode.no_wait);
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;
@@ -167,10 +167,10 @@ pub const SchedulerInstancePerThread = struct {
     fn getWorkOrNull(self: *Self) ?*coroutine {
         if (self.readyQueue.pop()) |coroInReadyQueue| {
             return coroInReadyQueue;
-        } else if (self.workStealingAndPutItInRunQueue()) {
-            const coro = self.readyQueue.pop();
-            assertWithMessage(coro != null, "the value that was put into the runQueue via workStealingAndPutItInRunQueue fn should have been null when the queue is just popped \n");
-            return coro.?;
+        } else if (self.workStealingAndPutItInRunQueue()) |stolenCoro| {
+            // const coro = self.readyQueue.pop();
+            // assertWithMessage(coro != null, "the value that was put into the runQueue via workStealingAndPutItInRunQueue fn should have been null when the queue is just popped \n");
+            return stolenCoro;
         } else if (self.parentScheduler.globalRunQueue.pop()) |coroInGlobalRunQueue| {
             return coroInGlobalRunQueue;
         } else {
@@ -178,24 +178,26 @@ pub const SchedulerInstancePerThread = struct {
         }
     }
 
-    /// retunrs true if found the work
-    fn workStealingAndPutItInRunQueue(self: *Self) bool {
+    /// returns true if found the work
+    fn workStealingAndPutItInRunQueue(self: *Self) ?*coroutine {
         // go to other schedulerInstanceOnThread and try to see if they have coro in the readyQueue, if yes then get it
 
-        var foundWork = false;
+        // var foundWork = false;
         for (self.parentScheduler.SchedulerInstancesOnThreads) |schedulerInstance| {
             if (schedulerInstance.SchedulerInstanceId == self.SchedulerInstanceId) continue;
-            if (schedulerInstance.readyQueue.popNTimesOrLess(.{})) |coro| {
-                self.readyQueue.putNTimes(coro) catch {
-                    schedulerInstance.readyQueue.putNTimes(coro) catch {
-                        std.debug.panic("\n got multiple coros form schedulerInstance:{d} during work stealing and tried to put it in my schedulerInstance's:{d} run queue but got allocOutOfMem error and then tried to put them back and still got the same error , don't know what to do with this coroutine so crashing\n", .{ schedulerInstance.SchedulerInstanceId, self.SchedulerInstanceId });
-                        // probably delete some freed list in the shcedulers etc, and try it again
-                    };
-                };
-                foundWork = true;
-            } else continue;
+            const coro = schedulerInstance.readyQueue.pop();
+            if (coro) |c| return c else continue;
+            // if (schedulerInstance.readyQueue.popNTimesOrLess(.{})) |coro| {
+            //     self.readyQueue.putNTimes(coro) catch {
+            //         schedulerInstance.readyQueue.putNTimes(coro) catch {
+            //             std.debug.panic("\n got multiple coros form schedulerInstance:{d} during work stealing and tried to put it in my schedulerInstance's:{d} run queue but got allocOutOfMem error and then tried to put them back and still got the same error , don't know what to do with this coroutine so crashing\n", .{ schedulerInstance.SchedulerInstanceId, self.SchedulerInstanceId });
+            //             // probably delete some freed list in the shcedulers etc, and try it again
+            //         };
+            //     };
+            //     foundWork = true;
+            // } else continue;
         }
-        return foundWork;
+        return null;
     }
 
     pub fn destroy(self: *Self) void {
@@ -204,33 +206,3 @@ pub const SchedulerInstancePerThread = struct {
         self.readyQueue.destroy();
     }
 };
-
-fn one(coro: *coroutine, scheduler: *Scheduler) void {
-    // _ = coro;
-    _ = scheduler;
-    // const goTill: u64 = 15000;
-    const goTill: u64 = 88;
-    for (0..goTill) |i| {
-        std.debug.print("[one] at index {d}\n", .{i});
-        if (i % 12 == 0) {
-            std.debug.print("[one] at index {d} and it is divisible by 12 so we are yielding\n", .{i});
-            coro.yield();
-        }
-    }
-    coro.coroutineState = .Finished;
-    coro.yield();
-}
-
-fn two(coro: *coroutine, scheduler: *Scheduler) void {
-    // _ = coro;
-    _ = scheduler;
-    // const goTill: u64 = 15000;
-    const goTill: u64 = 88;
-    for (0..goTill) |i| {
-        std.debug.print("[two] at index {d}\n", .{i});
-        if (i % 12 == 0) {
-            std.debug.print("[two] at index {d} and it is divisible by 12 so we are yielding\n", .{i});
-            coro.yield();
-        }
-    }
-}
