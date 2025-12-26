@@ -144,6 +144,10 @@ pub const SchedulerInstancePerThread = struct {
             var loop = try libxev.Loop.init(.{});
             defer loop.deinit();
             try loop.run(libxev.RunMode.no_wait);
+
+            // from llm research what it seems the https://github.com/lalinsky/aio.zig seems like a better lib for the sys calls completion
+            // I will need to implement the network, filesystem etc and that is too much work instead I should rather use something like zio
+
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;
@@ -168,8 +172,6 @@ pub const SchedulerInstancePerThread = struct {
         if (self.readyQueue.pop()) |coroInReadyQueue| {
             return coroInReadyQueue;
         } else if (self.workStealingAndPutItInRunQueue()) |stolenCoro| {
-            // const coro = self.readyQueue.pop();
-            // assertWithMessage(coro != null, "the value that was put into the runQueue via workStealingAndPutItInRunQueue fn should have been null when the queue is just popped \n");
             return stolenCoro;
         } else if (self.parentScheduler.globalRunQueue.pop()) |coroInGlobalRunQueue| {
             return coroInGlobalRunQueue;
@@ -181,21 +183,10 @@ pub const SchedulerInstancePerThread = struct {
     /// returns true if found the work
     fn workStealingAndPutItInRunQueue(self: *Self) ?*coroutine {
         // go to other schedulerInstanceOnThread and try to see if they have coro in the readyQueue, if yes then get it
-
-        // var foundWork = false;
         for (self.parentScheduler.SchedulerInstancesOnThreads) |schedulerInstance| {
             if (schedulerInstance.SchedulerInstanceId == self.SchedulerInstanceId) continue;
             const coro = schedulerInstance.readyQueue.pop();
             if (coro) |c| return c else continue;
-            // if (schedulerInstance.readyQueue.popNTimesOrLess(.{})) |coro| {
-            //     self.readyQueue.putNTimes(coro) catch {
-            //         schedulerInstance.readyQueue.putNTimes(coro) catch {
-            //             std.debug.panic("\n got multiple coros form schedulerInstance:{d} during work stealing and tried to put it in my schedulerInstance's:{d} run queue but got allocOutOfMem error and then tried to put them back and still got the same error , don't know what to do with this coroutine so crashing\n", .{ schedulerInstance.SchedulerInstanceId, self.SchedulerInstanceId });
-            //             // probably delete some freed list in the shcedulers etc, and try it again
-            //         };
-            //     };
-            //     foundWork = true;
-            // } else continue;
         }
         return null;
     }
