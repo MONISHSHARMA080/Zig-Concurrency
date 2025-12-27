@@ -16,17 +16,20 @@ pub fn build(b: *std.Build) void {
             @panic("Unsupported cpu architecture");
         },
     };
+    const aio_dep = b.dependency("aio", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const aio_module = aio_dep.module("aio");
+    // const libxev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
 
-    const libxev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
-
-    // Module WITH assembly for external users
     const concurrency_module_with_asm = b.addModule("ZigConcurrency", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
     concurrency_module_with_asm.addAssemblyFile(b.path(assembly_file));
-    concurrency_module_with_asm.addImport("xev", libxev.module("xev"));
+    concurrency_module_with_asm.addImport("aio", aio_module);
 
     // Module WITHOUT assembly for internal test imports (to avoid duplicates)
     const concurrency_module_no_asm = b.createModule(.{
@@ -34,7 +37,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    concurrency_module_no_asm.addImport("xev", libxev.module("xev"));
+    concurrency_module_no_asm.addImport("aio", aio_module);
 
     // Executable for main.zig
     const exe_module = b.createModule(.{
@@ -43,14 +46,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe_module.addImport("zigConcurrency", concurrency_module_no_asm);
-    exe_module.addImport("xev", libxev.module("xev"));
+    exe_module.addImport("aio", aio_module);
     exe_module.addAssemblyFile(b.path(assembly_file));
 
     const exe = b.addExecutable(.{
         .name = "zigConcurrency",
         .root_module = exe_module,
-        // .target = target,
-        // .optimize = optimize,
     });
 
     b.installArtifact(exe);
@@ -75,7 +76,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     lib_test_module.addAssemblyFile(b.path(assembly_file));
-    lib_test_module.addImport("xev", libxev.module("xev"));
+    lib_test_module.addImport("aio", aio_module);
 
     const lib_tests = b.addTest(.{
         .root_module = lib_test_module,
@@ -101,7 +102,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
             });
 
-            test_module.addImport("xev", libxev.module("xev"));
+            test_module.addImport("aio", aio_module);
             test_module.addAssemblyFile(b.path(assembly_file));
             test_module.addImport("ZigConcurrency", concurrency_module_no_asm);
 

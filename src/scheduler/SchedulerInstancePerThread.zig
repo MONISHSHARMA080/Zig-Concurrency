@@ -3,12 +3,12 @@ const coroutine = @import("../coroutine/coroutine.zig").Coroutine;
 const util = @import("../utils/typeChecking.zig");
 const queue = @import("../utils/queue.zig").ThreadSafeQueue;
 const Scheduler = @import("./scheduler.zig").Scheduler;
-const libxev = @import("xev");
 const Allocator = std.mem.Allocator;
 const allocOutOfMem = Allocator.Error;
 const asserts = @import("../utils/assert.zig");
 const assertWithMessage = asserts.assertWithMessage;
 const assert = std.debug.assert;
+const aio = @import("aio");
 
 pub const ReferenceToScheduler = union(enum) {
     schedulerInstancePerThread: ?*SchedulerInstancePerThread,
@@ -55,17 +55,21 @@ pub const SchedulerInstancePerThread = struct {
     SchedulerInstanceId: u32,
     /// [the SchedulerInstance has completed the work and no other work is to be found and when we get one in the queue then wake it up]
     futex: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
+    loop: aio.Loop = undefined,
     const SpinLimit = 900;
     const Self = @This();
 
     /// think about it this var shouldn't be null, like if this is null then I make a programming mistake,
     pub fn init(allocator1: Allocator, parentScheduler: *Scheduler, id: u32) allocOutOfMem!SchedulerInstancePerThread {
+        var a: aio.Loop = undefined;
+        a.init(.{ .allocator = allocator1 }) catch |err| std.debug.panic("got a error while initing aio.loop -> {s} \n", .{@errorName(err)});
         return SchedulerInstancePerThread{
             .allocator = allocator1,
             .readyQueue = try queue(*coroutine).init(allocator1, .{}),
             .waitQueue = try queue(*coroutine).init(allocator1, .{}),
             .parentScheduler = parentScheduler,
             .SchedulerInstanceId = id,
+            .loop = a,
         };
     }
     /// notify the scheduler that the work is there and wake the thread up
@@ -84,8 +88,6 @@ pub const SchedulerInstancePerThread = struct {
         // this fn will take in a fn and convert it into a coroutine and store it somewhere(global run queue etc)
         // ok here is a quick and dirty version of the scheduler just take in the struct that has the fn and atis args as a array and then convert them into coro
         // and start executing them, if one of them yield then I want you to take the next one and start executing it  until the state is finnished
-        //
-        // just hardcode some fn here and make them start
         if (options.skipTypeChecking == false) {
             const typeIsCorrect = comptime util.validateArgsMatchFunction(Fn, fnArgs, options.typeToSkipInChecking);
             if (!typeIsCorrect) @compileError("there is a type mismatch between the fn and the parameter type in the args provided");
@@ -141,13 +143,28 @@ pub const SchedulerInstancePerThread = struct {
             //[3rd] check the global run queue, is coro then run it
             //[4th] try work stealing
             //[5th] if both are not there and also not one waiting in the waitingQueue then wait on a futex or conditional var
-            var loop = try libxev.Loop.init(.{});
-            defer loop.deinit();
-            try loop.run(libxev.RunMode.no_wait);
 
             // from llm research what it seems the https://github.com/lalinsky/aio.zig seems like a better lib for the sys calls completion
             // I will need to implement the network, filesystem etc and that is too much work instead I should rather use something like zio
+            //https://claude.ai/chat/7eca2f0c-a847-4159-8972-54b052839136
 
+            self.loop.run(.no_wait) catch |err| std.debug.panic("got a error while initing aio.loop -> {s} \n", .{@errorName(err)});
+            var a = aio.Completion.init(.file_read);
+            const b = struct {
+                pub fn b(_: *aio.Loop, c: *aio.Completion) void {
+                    std.debug.print("\n[Completion] completed the event {}\n", .{c.getResult(.file_read) catch 0});
+                }
+            }.b;
+            a.callback = b;
+            self.loop.add(&a);
+
+            // aio.Work.CompletionFn(ctx: *anyopaque, work: *Work)
+            //
+            //
+            //now try to play with this and when done then imple, like try to read a file and then see the callback etc, and how will
+            //you get the response (in coro also) ans also how to make the coro as run ready
+            //
+            //
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;
@@ -195,5 +212,6 @@ pub const SchedulerInstancePerThread = struct {
         // also destroy the coroutine , probablly use it by the queue
         self.waitQueue.destroy();
         self.readyQueue.destroy();
+        self.loop.deinit();
     }
 };
