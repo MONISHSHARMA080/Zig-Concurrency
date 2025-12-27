@@ -264,13 +264,12 @@ pub fn ThreadSafeQueue(T: type) type {
         /// appends to the list, this one will block (mutex)
         /// errors if we don't have space and can't allocate new node
         pub fn put(self: *Self, value: T) Allocator.Error!void {
-            self.queueStart.nodePtr.*.lock.lock();
-            defer self.queueStart.nodePtr.*.lock.unlock();
+            const nodeToOprUpon = self.queueEnd.nodePtr;
+            nodeToOprUpon.lock.lock();
+            defer nodeToOprUpon.lock.unlock();
             // now since this is FIFO so we need to take the value add it in the queue
-
             // first we need to insert it in the place of the index and if we have a problem in allocating that is a problem of the next put btw, so a bool flag to check it
             // or we can make it size - 1 as future problem can be forced to dealt with today
-            //
             // increment the node's indexFilled field
 
             if (self.cantAllocateAfterThis) {
@@ -327,5 +326,51 @@ pub fn ThreadSafeQueue(T: type) type {
             node.nodeId = self.nodeNumber.fetchAdd(1, .monotonic);
             return self;
         }
+        // / appends to the list, this one will block (mutex)
+        // / errors if we don't have space and can't allocate new node
+        // pub fn putUnlocked(self: *Self, value: T) Allocator.Error!void {
+        //     // self.queueStart.nodePtr.*.lock.lock();
+        //     // defer self.queueStart.nodePtr.*.lock.unlock();
+        //     // now since this is FIFO so we need to take the value add it in the queue
+        //
+        //     // first we need to insert it in the place of the index and if we have a problem in allocating that is a problem of the next put btw, so a bool flag to check it
+        //     // or we can make it size - 1 as future problem can be forced to dealt with today
+        //     //
+        //     // increment the node's indexFilled field
+        //
+        //     if (self.cantAllocateAfterThis) {
+        //         self.getNewNodeAndIncrementQueueEndPointerToThat() catch return Allocator.Error.OutOfMemory;
+        //     }
+        //
+        //     // now if we were out of mem we got a new node and if not then then put already have a index
+        //     // now insert
+        //     // std.debug.print("\n;) the cantAllocateAfterThis is {any}\n", .{self.cantAllocateAfterThis});
+        //     std.debug.print(" at node:{d} , we are at {d} \n", .{ self.queueEnd.nodePtr.nodeId, self.queueEnd.itemIndex });
+        //     asserts.assertWithMessageFmtRuntime(self.queueEnd.itemIndex < self.listSize, "we are outside the array bounds, the array len([0..len-1]) is {d} and we are at {d} \n", .{ self.listSize, self.queueEnd.itemIndex });
+        //     self.queueEnd.nodePtr.list[self.queueEnd.itemIndex] = value;
+        //     self.queueEnd.nodePtr.indexFilled += 1;
+        //     if (self.cantAllocateAfterThis) {
+        //         // if we alllocated after a failed attempt and also inserted it in then the array index is at 0 index in that one
+        //         assert(self.queueEnd.itemIndex + 1 <= self.listSize);
+        //         self.queueEnd.itemIndex += 1;
+        //         self.cantAllocateAfterThis = false;
+        //     }
+        //     // increment the ptr to the next node if it is at the end then allocate a new node if not able to then set the self.cantAllocateAfterThis to true
+        //     if (self.queueEnd.itemIndex + 1 >= self.listSize) {
+        //         // new node
+        //         std.debug.print("the current node's next node ptr is {any} \n and also current node is {} \n", .{ self.queueEnd.nodePtr.nextListPtr, self.queueEnd.nodePtr.* });
+        //
+        //         self.getNewNodeAndIncrementQueueEndPointerToThat() catch {
+        //             self.cantAllocateAfterThis = true;
+        //             // now don't return a error as we are able to put it in and not able to go to/get the next node
+        //             // return Allocator.Error;
+        //             return;
+        //         };
+        //         return;
+        //     } else {
+        //         self.queueEnd.itemIndex += 1;
+        //         return;
+        //     }
+        // }
     };
 }

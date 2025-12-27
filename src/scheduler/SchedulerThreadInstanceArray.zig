@@ -55,6 +55,10 @@ pub const SchedulerThreadInstanceArray = struct {
         var i = self.index;
         while (i != 0) : (i -= 1) {
             if (self.arr[i]) |schedulerInstance| {
+                // schedulerInstance.readyQueue.lock.lock();
+                // defer schedulerInstance.readyQueue.lock.unlock();
+
+                // putUnlocked - cause when we use put the scheduler can take it and unlock it and it's ptr will not be there and dereferencing it causes crash
                 schedulerInstance.readyQueue.put(coro) catch continue;
                 if (config.alsoWakeItUp) {
                     schedulerInstance.notify();
