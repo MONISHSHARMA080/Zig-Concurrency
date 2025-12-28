@@ -147,6 +147,7 @@ pub const SchedulerInstancePerThread = struct {
             // from llm research what it seems the https://github.com/lalinsky/aio.zig seems like a better lib for the sys calls completion
             // I will need to implement the network, filesystem etc and that is too much work instead I should rather use something like zio
             //https://claude.ai/chat/7eca2f0c-a847-4159-8972-54b052839136
+            //https://claude.ai/chat/7eca2f0c-a847-4159-8972-54b052839136
 
             // we could use this in a abstract way, like in the schedulerInstance fn we can accept a completion and a *coro, and there we can make the
             // callback = as generic and when the callback fires we can just wake it up and schedulerInstance, and the coro will give us the op(like FileRead)
