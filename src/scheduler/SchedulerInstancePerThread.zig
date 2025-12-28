@@ -148,23 +148,17 @@ pub const SchedulerInstancePerThread = struct {
             // I will need to implement the network, filesystem etc and that is too much work instead I should rather use something like zio
             //https://claude.ai/chat/7eca2f0c-a847-4159-8972-54b052839136
 
-            self.loop.run(.no_wait) catch |err| std.debug.panic("got a error while initing aio.loop -> {s} \n", .{@errorName(err)});
-            var a = aio.Completion.init(.file_read);
-            const b = struct {
-                pub fn b(_: *aio.Loop, c: *aio.Completion) void {
-                    std.debug.print("\n[Completion] completed the event {}\n", .{c.getResult(.file_read) catch 0});
-                }
-            }.b;
-            a.callback = b;
-            self.loop.add(&a);
+            // we could use this in a abstract way, like in the schedulerInstance fn we can accept a completion and a *coro, and there we can make the
+            // callback = as generic and when the callback fires we can just wake it up and schedulerInstance, and the coro will give us the op(like FileRead)
+            // and call yield on itself(or we can do it too), and when the coro wakes up then it can get the result using the getResult
+            //
+            // const op = aio.FileRead.init(0, .{ .iovecs = undefined }, 0);
+            // op.c.userdata = Coroutine;
+            // op.c.callback = undefined;
+            // loop.add(&op.c);
+            // try op.c.op.toType();
+            // const x = op.getResult() catch unreachable;
 
-            // aio.Work.CompletionFn(ctx: *anyopaque, work: *Work)
-            //
-            //
-            //now try to play with this and when done then imple, like try to read a file and then see the callback etc, and how will
-            //you get the response (in coro also) ans also how to make the coro as run ready
-            //
-            //
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;

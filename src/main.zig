@@ -3,6 +3,7 @@ const zigConcurrency = @import("zigConcurrency");
 const Coroutine = @import("zigConcurrency").Coroutine;
 // const Scheduler = @import("./scheduler/scheduler.zig");
 const Scheduler = zigConcurrency.Scheduler;
+const aio = @import("aio");
 
 fn abc(s: *Coroutine) void {
     _ = s;
