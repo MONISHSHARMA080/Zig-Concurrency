@@ -150,6 +150,16 @@ pub const Coroutine = struct {
         assert.assertWithMessage(self.targetCoroutineToYieldTo != null, "to run the coroutine we need to have the targetCoroutineToYieldTo field not null\n");
         return ziro_stack_swap(self.targetCoroutineToYieldTo.?, self);
     }
+    /// run the coro and when ran then get out of the coro, automatically sets the coro to yield to
+    pub fn run(self: *Coroutine) void {
+        var coroToRunOther: Coroutine = .{
+            .stack = &[_]u8{},
+            .stack_pointer = undefined,
+            .allocator = undefined,
+        };
+        self.targetCoroutineToYieldTo = &coroToRunOther;
+        self.startRunning();
+    }
 };
 const ArchInfo = struct {
     num_registers: usize,

@@ -126,16 +126,28 @@ pub const SchedulerInstancePerThread = struct {
         self.parentScheduler.registerIdle(self);
         std.Thread.Futex.wait(&self.futex, ticket);
         self.parentScheduler.deRegisterIdle(self);
-
         return null;
     }
 
+    pub fn submitWork(self: *SchedulerInstancePerThread, coro: *coroutine, work: *aio.Completion) void {
+        // here make the callback as generic
+        work.callback = genericLoopCompletionCallback;
+        work.userdata = coro;
+        self.loop.add(work);
+        coro.yield();
+    }
+
+    pub fn genericLoopCompletionCallback(self: *Self, loop: *aio.Loop, completion: *aio.Completion) void {
+        _ = loop;
+        asserts.assertWithMessageFmtRuntime(completion.userdata != null, "the completion's userdata is null, it should be a non null coroutine ref \n", .{});
+        const coro: *coroutine = @ptrCast(@alignCast(completion.userdata.?));
+        self.readyQueue.put(coro);
+        // if the threas is sleeping then wake it up
+        // this could be optimised
+        self.notify();
+    }
+
     pub fn run(self: *SchedulerInstancePerThread) !void {
-        var coroToRunOther: coroutine = .{
-            .stack = &[_]u8{},
-            .stack_pointer = undefined,
-            .allocator = undefined,
-        };
         SelfRef = .{ .schedulerInstancePerThread = self };
         while (true) {
             //[1st] check is the sys calls are completed,using libxev and make coro as runnable : Not implemented
@@ -160,6 +172,8 @@ pub const SchedulerInstancePerThread = struct {
             // try op.c.op.toType();
             // const x = op.getResult() catch unreachable;
 
+            try self.loop.run(.no_wait);
+
             const coroToRun: *coroutine = blk: {
                 if (self.getWorkOrNull()) |coro| {
                     break :blk coro;
@@ -169,9 +183,7 @@ pub const SchedulerInstancePerThread = struct {
                 }
                 continue;
             };
-            // run the coroutine and then repeat the loop
-            coroToRun.targetCoroutineToYieldTo = &coroToRunOther;
-            coroToRun.startRunning();
+            coroToRun.run();
             if (coroToRun.coroutineState == .Finished) {
                 // if the coro is finish then destroy and move on
                 coroToRun.destroy();
